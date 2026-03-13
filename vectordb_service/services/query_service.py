@@ -98,15 +98,19 @@ class QueryService:
 
         # Step 4: Gemini locates the target element bounding box
         logger.info("Asking Gemini to locate bounding box for: %s", query_text)
-        bbox_result = locate_bounding_box(
-            api_key=self._settings.gemini_api_key,
-            query=query_text,
-            frame_path=selected_path,
-            omniparser_elements=elements,
-            model=self._settings.gemini_model,
-        )
+        try:
+            bbox_result = locate_bounding_box(
+                api_key=self._settings.gemini_api_key,
+                query=query_text,
+                frame_path=selected_path,
+                omniparser_elements=elements,
+                model=self._settings.gemini_model,
+            )
+        except Exception:
+            logger.exception("Gemini locate_bounding_box failed")
+            bbox_result = {"element_text": "", "bbox": None, "reason": "Gemini API error"}
 
-        bbox = bbox_result.get("bbox", [0, 0, 0, 0])
+        bbox = bbox_result.get("bbox") or [0, 0, 0, 0]
 
         # Step 5: Draw bounding box on the frame
         vid = selected_match["metadata"].get("video_id", "")
