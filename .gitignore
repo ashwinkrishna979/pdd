@@ -82,3 +82,5 @@ dmypy.json
 
 outputs/
 inputs/
+
+vectordb_service/data/

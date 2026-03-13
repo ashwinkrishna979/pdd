@@ -26,13 +26,13 @@ def _strip_markdown_for_docx(text: str) -> str:
     """Remove all markdown formatting before inserting into DOCX."""
     if not text:
         return text
-    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-    text = re.sub(r'__([^_]+)__', r'\1', text)
-    text = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'\1', text)
-    text = re.sub(r'(?<!_)_([^_]+)_(?!_)', r'\1', text)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```[^`]*```', '', text, flags=re.DOTALL)
-    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^_]+)__", r"\1", text)
+    text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<!_)_([^_]+)_(?!_)", r"\1", text)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"```[^`]*```", "", text, flags=re.DOTALL)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
     return text
 
 
@@ -55,9 +55,9 @@ def _resolve_step_number(step_num, annotated_frames: Dict) -> str:
         return annotated_frames[str_num]
 
     # Extract trailing integer from "2.4.X"
-    if isinstance(step_num, str) and '.' in step_num:
+    if isinstance(step_num, str) and "." in step_num:
         try:
-            num_key = int(step_num.split('.')[-1])
+            num_key = int(step_num.split(".")[-1])
             if num_key in annotated_frames:
                 return annotated_frames[num_key]
             if str(num_key) in annotated_frames:
@@ -85,15 +85,16 @@ def _convert_svg_to_png(svg_path: str) -> Optional[str]:
     if not svg_path or not os.path.exists(svg_path):
         return None
 
-    png_path = os.path.splitext(svg_path)[0] + '_converted.png'
+    png_path = os.path.splitext(svg_path)[0] + "_converted.png"
 
     # Already a PNG
-    if svg_path.lower().endswith('.png'):
+    if svg_path.lower().endswith(".png"):
         return svg_path
 
     # Method 1: cairosvg (best quality)
     try:
         import cairosvg
+
         cairosvg.svg2png(url=svg_path, write_to=png_path, dpi=200)
         if os.path.exists(png_path):
             print(f"    [PDDDoc] SVG→PNG via cairosvg: {png_path}")
@@ -107,9 +108,10 @@ def _convert_svg_to_png(svg_path: str) -> Optional[str]:
     try:
         from svglib.svglib import svg2rlg
         from reportlab.graphics import renderPM
+
         drawing = svg2rlg(svg_path)
         if drawing:
-            renderPM.drawToFile(drawing, png_path, fmt='PNG', dpi=200)
+            renderPM.drawToFile(drawing, png_path, fmt="PNG", dpi=200)
             if os.path.exists(png_path):
                 print(f"    [PDDDoc] SVG→PNG via svglib: {png_path}")
                 return png_path
@@ -121,10 +123,18 @@ def _convert_svg_to_png(svg_path: str) -> Optional[str]:
     # Method 3: Inkscape CLI
     try:
         import subprocess
+
         result = subprocess.run(
-            ['inkscape', svg_path, '--export-type=png',
-             f'--export-filename={png_path}', '--export-dpi=200'],
-            capture_output=True, text=True, timeout=30
+            [
+                "inkscape",
+                svg_path,
+                "--export-type=png",
+                f"--export-filename={png_path}",
+                "--export-dpi=200",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode == 0 and os.path.exists(png_path):
             print(f"    [PDDDoc] SVG→PNG via Inkscape: {png_path}")
@@ -137,8 +147,9 @@ def _convert_svg_to_png(svg_path: str) -> Optional[str]:
     # Method 4: Pillow with wand (ImageMagick)
     try:
         from wand.image import Image as WandImage
+
         with WandImage(filename=svg_path, resolution=200) as img:
-            img.format = 'png'
+            img.format = "png"
             img.save(filename=png_path)
         if os.path.exists(png_path):
             print(f"    [PDDDoc] SVG→PNG via Wand: {png_path}")
@@ -148,8 +159,10 @@ def _convert_svg_to_png(svg_path: str) -> Optional[str]:
     except Exception as e:
         print(f"    [PDDDoc] Wand conversion failed: {e}")
 
-    print(f"    [PDDDoc] Warning: Could not convert SVG to PNG. "
-          f"Install cairosvg (pip install cairosvg) for best results.")
+    print(
+        f"    [PDDDoc] Warning: Could not convert SVG to PNG. "
+        f"Install cairosvg (pip install cairosvg) for best results."
+    )
     return None
 
 
@@ -162,8 +175,8 @@ class PDDGenerator:
         self._setup_margins()
 
     def _setup_styles(self):
-        style = self.doc.styles['Normal']
-        style.font.name = 'Arial'
+        style = self.doc.styles["Normal"]
+        style.font.name = "Arial"
         style.font.size = Pt(11)
 
     def _setup_margins(self):
@@ -180,7 +193,7 @@ class PDDGenerator:
         p.paragraph_format.space_after = Pt(after)
         r = p.add_run(text)
         r.bold = True
-        r.font.name = 'Arial'
+        r.font.name = "Arial"
         r.font.size = Pt({1: 14, 2: 12, 3: 11}.get(level, 11))
         r.font.color.rgb = RGBColor.from_string(color)
 
@@ -193,9 +206,7 @@ class PDDGenerator:
     def _table(self, data, header_color="4F81BD", widths=None):
         if not data:
             return
-        t = self.doc.add_table(
-            rows=len(data), cols=len(data[0]), style="Table Grid"
-        )
+        t = self.doc.add_table(rows=len(data), cols=len(data[0]), style="Table Grid")
         t.alignment = WD_TABLE_ALIGNMENT.CENTER
         if widths:
             for i, w in enumerate(widths):
@@ -225,16 +236,19 @@ class PDDGenerator:
 
         # If SVG, convert to PNG for DOCX embedding
         image_path = flowchart_path
-        if flowchart_path.lower().endswith('.svg'):
+        if flowchart_path.lower().endswith(".svg"):
             converted = _convert_svg_to_png(flowchart_path)
             if converted and os.path.exists(converted):
                 image_path = converted
             else:
-                self._para("[Flowchart generated as SVG — install cairosvg to embed in DOCX]")
+                self._para(
+                    "[Flowchart generated as SVG — install cairosvg to embed in DOCX]"
+                )
                 return
 
         try:
             from PIL import Image
+
             img = Image.open(image_path)
             img_width, img_height = img.size
 
@@ -274,16 +288,16 @@ class PDDGenerator:
 
         text = _strip_markdown_for_docx(text)
 
-        for para in text.split('\n'):
+        for para in text.split("\n"):
             para = para.strip()
             if not para:
                 continue
 
-            is_bullet = para.startswith(('- ', '• ', '* '))
+            is_bullet = para.startswith(("- ", "• ", "* "))
             if is_bullet:
-                para = para.lstrip('-•* ').strip()
+                para = para.lstrip("-•* ").strip()
                 self._para(f"  •  {para}", after=3)
-            elif re.match(r'^\d+[\.\)]\s', para):
+            elif re.match(r"^\d+[\.\)]\s", para):
                 self._para(f"  {para}", after=3)
             else:
                 self._para(para, after=8)
@@ -328,7 +342,7 @@ class PDDGenerator:
         exception_handling: List[Dict] = None,
         flowchart_path: str = "",
         output_path: str = "PDD.docx",
-        annotated_frames: Dict = None
+        annotated_frames: Dict = None,
     ) -> str:
         """Generate complete PDD/BRD document."""
 
@@ -368,26 +382,44 @@ class PDDGenerator:
 
         # ===== VERSION INFO =====
         self._heading("Template Version Information", 2, before=0)
-        self._table([
-            ["Author", "Business Unit", "Classification", "Status", "Version"],
-            ["", "", config.document.classification,
-             config.document.status, config.document.version]
-        ], widths=[1.5, 1.5, 1.3, 1.3, 0.8])
+        self._table(
+            [
+                ["Author", "Business Unit", "Classification", "Status", "Version"],
+                [
+                    "",
+                    "",
+                    config.document.classification,
+                    config.document.status,
+                    config.document.version,
+                ],
+            ],
+            widths=[1.5, 1.5, 1.3, 1.3, 0.8],
+        )
 
         self.doc.add_page_break()
 
         # ===== REVIEW & APPROVAL =====
         self._heading("REVIEW & APPROVAL", 1, before=0)
-        self._table([
-            ["Project Name", project_name, "Project ID", ""],
-            ["Document", f"{doc_type_full} ({doc_type})",
-             "Version", config.document.version]
-        ], widths=[1.5, 2.5, 1.0, 1.0])
-        self._table([
-            ["Name", "Title / Position", "Date", "Signature"],
-            ["", "", "", ""],
-            ["", "", "", ""]
-        ], widths=[2.0, 2.0, 1.5, 1.5])
+        self._table(
+            [
+                ["Project Name", project_name, "Project ID", ""],
+                [
+                    "Document",
+                    f"{doc_type_full} ({doc_type})",
+                    "Version",
+                    config.document.version,
+                ],
+            ],
+            widths=[1.5, 2.5, 1.0, 1.0],
+        )
+        self._table(
+            [
+                ["Name", "Title / Position", "Date", "Signature"],
+                ["", "", "", ""],
+                ["", "", "", ""],
+            ],
+            widths=[2.0, 2.0, 1.5, 1.5],
+        )
 
         self.doc.add_page_break()
 
@@ -399,8 +431,8 @@ class PDDGenerator:
             "    1.2  Overview and Objective",
             "    1.3  Business Justification",
             "2  Business Requirements",
-            "    2.1  \"As Is\" Process",
-            "    2.2  \"To Be\" Process (Automated State)",
+            '    2.1  "As Is" Process',
+            '    2.2  "To Be" Process (Automated State)',
             "    2.2.1  Process Flow",
             f"    2.2.2  {steps_header}",
             "    2.3  Input Requirements",
@@ -431,8 +463,7 @@ class PDDGenerator:
             self._add_multiline_content(overview)
         else:
             self._para(
-                f"The primary objective is to automate the "
-                f"{project_name} process."
+                f"The primary objective is to automate the {project_name} process."
             )
 
         self._heading("1.3  BUSINESS JUSTIFICATION", 2)
@@ -447,7 +478,7 @@ class PDDGenerator:
         self._heading("2  BUSINESS REQUIREMENTS", 1, before=0)
 
         # 2.1 As-Is
-        self._heading("2.1  \"AS IS\" PROCESS", 2)
+        self._heading('2.1  "AS IS" PROCESS', 2)
         if as_is:
             self._add_multiline_content(as_is)
         else:
@@ -456,7 +487,7 @@ class PDDGenerator:
         self.doc.add_page_break()
 
         # 2.2 To-Be
-        self._heading("2.2  \"TO BE\" PROCESS (AUTOMATED STATE)", 2)
+        self._heading('2.2  "TO BE" PROCESS (AUTOMATED STATE)', 2)
         if to_be:
             self._add_multiline_content(to_be)
 
@@ -472,7 +503,7 @@ class PDDGenerator:
             for s in process_steps:
                 num = s.get("number", "")
                 desc = _strip_markdown_for_docx(s.get("description", ""))
-                first_sentence = desc.split('.')[0] + '.' if '.' in desc else desc[:100]
+                first_sentence = desc.split(".")[0] + "." if "." in desc else desc[:100]
                 data.append([str(num), first_sentence])
             self._table(data, widths=[0.5, 6.0])
         else:
@@ -483,18 +514,23 @@ class PDDGenerator:
         if input_requirements:
             data = [["SL #", "Input Parameter", "Description"]]
             for i, inp in enumerate(input_requirements):
-                data.append([
-                    str(i + 1),
-                    _strip_markdown_for_docx(inp.get("parameter", "")),
-                    _strip_markdown_for_docx(inp.get("description", ""))
-                ])
+                data.append(
+                    [
+                        str(i + 1),
+                        _strip_markdown_for_docx(inp.get("parameter", "")),
+                        _strip_markdown_for_docx(inp.get("description", "")),
+                    ]
+                )
             self._table(data, widths=[0.5, 2.0, 4.0])
         else:
-            self._table([
-                ["SL #", "Input Parameter", "Description"],
-                ["1", "", ""],
-                ["2", "", ""]
-            ], widths=[0.5, 2.0, 4.0])
+            self._table(
+                [
+                    ["SL #", "Input Parameter", "Description"],
+                    ["1", "", ""],
+                    ["2", "", ""],
+                ],
+                widths=[0.5, 2.0, 4.0],
+            )
 
         self.doc.add_page_break()
 
@@ -514,14 +550,26 @@ class PDDGenerator:
                 else:
                     display_num = f"2.4.{step_num}"
 
-                # Step sub-heading
+                lines = desc.split("\n")
+
+                # Step sub-heading (First line)
                 p = self.doc.add_paragraph()
                 p.paragraph_format.space_before = Pt(14)
-                p.paragraph_format.space_after = Pt(4)
-                r = p.add_run(f"{display_num}. {desc}")
+                p.paragraph_format.space_after = Pt(2) if len(lines) > 1 else Pt(4)
+                r = p.add_run(f"{display_num}. {lines[0].strip()}")
                 r.bold = True
                 r.font.size = Pt(11)
-                r.font.name = 'Arial'
+                r.font.name = "Arial"
+
+                # Subsequent lines (if any)
+                for line in lines[1:]:
+                    if line.strip():
+                        p_sub = self.doc.add_paragraph()
+                        p_sub.paragraph_format.space_after = Pt(2)
+                        p_sub.paragraph_format.left_indent = Inches(0.4)
+                        r_sub = p_sub.add_run(line.strip())
+                        r_sub.font.size = Pt(11)
+                        r_sub.font.name = "Arial"
 
                 # Operations detected
                 ops = step.get("operations_detected", [])
@@ -539,7 +587,7 @@ class PDDGenerator:
                 # Find screenshot
                 frame_path = _resolve_step_number(step_num, annotated_frames)
 
-                if (not frame_path or not os.path.exists(frame_path)):
+                if not frame_path or not os.path.exists(frame_path):
                     frame_path = step.get("frame_after_path", "")
 
                 if frame_path and os.path.exists(frame_path):
@@ -547,7 +595,9 @@ class PDDGenerator:
                         screenshots_added += 1
 
             if screenshots_added > 0:
-                print(f"    [PDDDoc] Added {screenshots_added} screenshots to Section 2.4")
+                print(
+                    f"    [PDDDoc] Added {screenshots_added} screenshots to Section 2.4"
+                )
             else:
                 print(f"    [PDDDoc] Warning: No screenshots were added to Section 2.4")
         else:
@@ -560,17 +610,19 @@ class PDDGenerator:
         if interface_requirements:
             data = [["SL #", "Interface Requirement", "Description"]]
             for i, app in enumerate(interface_requirements):
-                data.append([
-                    str(i + 1),
-                    _strip_markdown_for_docx(app.get("application", "")),
-                    _strip_markdown_for_docx(app.get("purpose", ""))
-                ])
+                data.append(
+                    [
+                        str(i + 1),
+                        _strip_markdown_for_docx(app.get("application", "")),
+                        _strip_markdown_for_docx(app.get("purpose", "")),
+                    ]
+                )
             self._table(data, widths=[0.5, 2.5, 3.5])
         else:
-            self._table([
-                ["SL #", "Interface Requirement", "Description"],
-                ["1", "", ""]
-            ], widths=[0.5, 2.5, 3.5])
+            self._table(
+                [["SL #", "Interface Requirement", "Description"], ["1", "", ""]],
+                widths=[0.5, 2.5, 3.5],
+            )
 
         self.doc.add_page_break()
 
@@ -579,19 +631,28 @@ class PDDGenerator:
         if exception_handling:
             data = [["Exception Scenario", "Handling Action"]]
             for exc in exception_handling:
-                data.append([
-                    _strip_markdown_for_docx(exc.get("exception", "")),
-                    _strip_markdown_for_docx(exc.get("handling", ""))
-                ])
+                data.append(
+                    [
+                        _strip_markdown_for_docx(exc.get("exception", "")),
+                        _strip_markdown_for_docx(exc.get("handling", "")),
+                    ]
+                )
             self._table(data, widths=[2.5, 4.5])
         else:
-            self._table([
-                ["Exception Scenario", "Handling Action"],
-                ["Application Login Failure",
-                 "Stop execution, log the error, and send a notification."],
-                ["Record Not Found",
-                 "Log the failure, skip the record, and continue processing."],
-            ], widths=[2.5, 4.5])
+            self._table(
+                [
+                    ["Exception Scenario", "Handling Action"],
+                    [
+                        "Application Login Failure",
+                        "Stop execution, log the error, and send a notification.",
+                    ],
+                    [
+                        "Record Not Found",
+                        "Log the failure, skip the record, and continue processing.",
+                    ],
+                ],
+                widths=[2.5, 4.5],
+            )
 
         # Save
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -604,7 +665,7 @@ class PDDGenerator:
         doc_path: str,
         frame_text_pairs: List[Tuple[str, str]],
         detailed_steps: List[Dict] = None,
-        start_step: int = 1
+        start_step: int = 1,
     ):
         """Append screenshots under Section 2.4 format."""
         if not os.path.exists(doc_path):
@@ -628,11 +689,11 @@ class PDDGenerator:
 
         for i, para in enumerate(doc.paragraphs):
             text = para.text.strip()
-            if '2.4' in text and detailed_header.upper()[:10] in text.upper():
+            if "2.4" in text and detailed_header.upper()[:10] in text.upper():
                 section_24_idx = i
-            elif '2.4' in text and 'HIGH LEVEL' in text.upper():
+            elif "2.4" in text and "HIGH LEVEL" in text.upper():
                 section_24_idx = i
-            elif '2.5' in text and 'INTERFACE' in text.upper():
+            elif "2.5" in text and "INTERFACE" in text.upper():
                 section_25_idx = i
                 break
 
@@ -652,7 +713,7 @@ class PDDGenerator:
         r = h.add_run(f"2.4  {detailed_header.upper()}")
         r.bold = True
         r.font.size = Pt(12)
-        r.font.name = 'Arial'
+        r.font.name = "Arial"
         r.font.color.rgb = RGBColor.from_string("0D3B66")
 
         num_frames = len(frame_text_pairs) if frame_text_pairs else 0
@@ -663,7 +724,9 @@ class PDDGenerator:
             step_num = f"2.4.{i + 1}"
 
             if detailed_steps and i < num_detailed:
-                desc = _strip_markdown_for_docx(detailed_steps[i].get("description", ""))
+                desc = _strip_markdown_for_docx(
+                    detailed_steps[i].get("description", "")
+                )
             elif frame_text_pairs and i < num_frames:
                 desc = _strip_markdown_for_docx(frame_text_pairs[i][1])
             else:
@@ -675,7 +738,7 @@ class PDDGenerator:
             r = p.add_run(f"{step_num}. {desc}")
             r.bold = True
             r.font.size = Pt(11)
-            r.font.name = 'Arial'
+            r.font.name = "Arial"
 
             if frame_text_pairs and i < num_frames:
                 frame_path = frame_text_pairs[i][0]

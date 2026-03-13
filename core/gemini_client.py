@@ -38,7 +38,9 @@ class GeminiClient:
         api_key = config.gemini.api_key
         if not api_key:
             self._client = None
-            print("    [Gemini] No API key set. Set GEMINI_API_KEY environment variable.")
+            print(
+                "    [Gemini] No API key set. Set GEMINI_API_KEY environment variable."
+            )
             return
         try:
             self._client = genai.Client(api_key=api_key)
@@ -94,7 +96,7 @@ class GeminiClient:
             max_h = config.image.max_height
 
             if img.width > max_w or img.height > max_h:
-                img.thumbnail((max_w, max_h), Image.LANCZOS)
+                img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
 
             if img.mode == "RGBA":
                 img = img.convert("RGB")
@@ -109,11 +111,12 @@ class GeminiClient:
     def generate(
         self,
         prompt: str,
-        system_prompt: str = None,
-        image_paths: List[str] = None,
-        temperature: float = None,
-        max_output_tokens: int = None,
-        call_name: str = None,
+        system_prompt: Optional[str] = None,
+        image_paths: Optional[List[str]] = None,
+        audio_path: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_output_tokens: Optional[int] = None,
+        call_name: Optional[str] = None,
         max_retries: int = 3,
     ) -> Optional[str]:
         if not self._client:
@@ -121,19 +124,34 @@ class GeminiClient:
             return None
 
         has_images = bool(image_paths)
-        model_name = config.gemini.vision_model if has_images else config.gemini.text_model
+        has_audio = bool(audio_path)
+        model_name = (
+            config.gemini.vision_model
+            if (has_images or has_audio)
+            else config.gemini.text_model
+        )
         temp = temperature if temperature is not None else config.llm.temperature
         max_tokens = max_output_tokens or config.llm.max_output_tokens
 
         contents = []
+
+        # Upload audio if provided
+        uploaded_audio = None
+        if has_audio and os.path.exists(audio_path):
+            try:
+                print(f"    [Gemini] Uploading audio: {audio_path}")
+                uploaded_audio = self._client.files.upload(file=audio_path)
+                contents.append(uploaded_audio)
+            except Exception as e:
+                print(f"    [Gemini] Audio upload error: {e}")
+
         if has_images:
             for p in image_paths:
                 img = self._prepare_image(p)
                 if img:
                     contents.append(img)
-            if image_paths and not contents:
+            if image_paths and not any(isinstance(c, Image.Image) for c in contents):
                 print("    [Gemini] No images could be loaded")
-                return None
 
         contents.append(prompt)
 
@@ -155,7 +173,7 @@ class GeminiClient:
                 preview = prompt[:80].replace("\n", " ")
                 img_str = f", {len(image_paths)} img" if has_images else ""
                 print(
-                    f'    [Gemini] Sending ({len(prompt)} chars{img_str}, model={model_name}): '
+                    f"    [Gemini] Sending ({len(prompt)} chars{img_str}, model={model_name}): "
                     f'"{preview}..." (attempt {attempt + 1}, daily: {self._daily_count})'
                 )
 
@@ -171,19 +189,43 @@ class GeminiClient:
                 prompt_tokens = 0
                 response_tokens = 0
                 if hasattr(resp, "usage_metadata") and resp.usage_metadata:
-                    prompt_tokens = getattr(resp.usage_metadata, "prompt_token_count", 0) or 0
-                    response_tokens = getattr(resp.usage_metadata, "candidates_token_count", 0) or 0
+                    prompt_tokens = (
+                        getattr(resp.usage_metadata, "prompt_token_count", 0) or 0
+                    )
+                    response_tokens = (
+                        getattr(resp.usage_metadata, "candidates_token_count", 0) or 0
+                    )
 
                 if text:
-                    token_info = f" [tokens: {prompt_tokens}>{response_tokens}]" if prompt_tokens else ""
-                    print(f"    [Gemini] {len(text)} chars in {elapsed:.1f}s{token_info}")
+                    token_info = (
+                        f" [tokens: {prompt_tokens}>{response_tokens}]"
+                        if prompt_tokens
+                        else ""
+                    )
+                    print(
+                        f"    [Gemini] {len(text)} chars in {elapsed:.1f}s{token_info}"
+                    )
                 else:
                     print(f"    [Gemini] Empty response after {elapsed:.1f}s")
 
                 self._record(
-                    call_name, model_name, prompt, system_prompt, text,
-                    elapsed, prompt_tokens, response_tokens, has_images
+                    call_name,
+                    model_name,
+                    prompt,
+                    system_prompt,
+                    text,
+                    elapsed,
+                    prompt_tokens,
+                    response_tokens,
+                    has_images or has_audio,
                 )
+
+                if uploaded_audio:
+                    try:
+                        self._client.files.delete(name=uploaded_audio.name)
+                    except Exception as e:
+                        print(f"    [Gemini] Failed to delete audio file: {e}")
+
                 return text
 
             except APIError as e:
@@ -206,12 +248,30 @@ class GeminiClient:
                     continue
                 break
 
-        self._record(call_name, model_name, prompt, system_prompt, None, time.time() - start, 0, 0, has_images)
+        self._record(
+            call_name,
+            model_name,
+            prompt,
+            system_prompt,
+            None,
+            time.time() - start,
+            0,
+            0,
+            has_images,
+        )
         return None
 
     def _record(
-        self, call_name, model_name, prompt, system_prompt,
-        response, duration, actual_prompt, actual_response, has_image
+        self,
+        call_name,
+        model_name,
+        prompt,
+        system_prompt,
+        response,
+        duration,
+        actual_prompt,
+        actual_response,
+        has_image,
     ):
         if self._tracker and call_name:
             self._tracker.record(
@@ -223,7 +283,7 @@ class GeminiClient:
                 system_prompt=system_prompt or "",
                 actual_prompt_tokens=actual_prompt,
                 actual_response_tokens=actual_response,
-                has_image=has_image
+                has_image=has_image,
             )
 
     def is_available(self) -> bool:

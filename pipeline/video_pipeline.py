@@ -34,15 +34,19 @@ from video.ocr_engine import ocr_frame, OCR_AVAILABLE
 from video.change_detector import detect_changes_between_frames
 from video.frame_annotator import annotate_frame
 
-from llm_tasks.vision_describer import analyze_transitions_smart, identify_application
-from llm_tasks.step_synthesizer import synthesize_pdd_steps, generate_logical_process_steps
-from llm_tasks.document_sections import generate_all_sections_parallel
-from llm_tasks.flowchart_dot import generate_flowchart_dot_from_steps
+from core.vectordb_client import upload_video, query_locate
+from llm_tasks.meeting_compact import (
+    generate_pdd_bundle_batch,
+    generate_dot_from_transcript,
+)
 
 from pipeline.common import (
-    save_persistent_document, save_flowchart_persistent,
-    generate_flowchart, build_document,
-    print_pipeline_header, print_pipeline_footer
+    save_persistent_document,
+    save_dot_code,
+    generate_flowchart,
+    build_document,
+    print_pipeline_header,
+    print_pipeline_footer,
 )
 
 
@@ -64,8 +68,7 @@ def _parallel_ocr(frame_paths: List[str], with_boxes: bool = False) -> Dict[str,
     print(f"    [OCR] Processing {len(frame_paths)} frames in parallel...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_path = {
-            executor.submit(ocr_frame, fp, with_boxes): fp
-            for fp in frame_paths
+            executor.submit(ocr_frame, fp, with_boxes): fp for fp in frame_paths
         }
         for future in concurrent.futures.as_completed(future_to_path):
             path = future_to_path[future]
@@ -81,8 +84,7 @@ def _parallel_ocr(frame_paths: List[str], with_boxes: bool = False) -> Dict[str,
 
 
 def _extract_micro_frames(
-    video_path: str, scene_changes: List[Dict],
-    output_dir: str, fps: float
+    video_path: str, scene_changes: List[Dict], output_dir: str, fps: float
 ) -> List[Dict]:
     """Extract additional frames around each scene change."""
     if not scene_changes:
@@ -121,17 +123,19 @@ def _extract_micro_frames(
                 minutes = int(t // 60)
                 seconds = int(t % 60)
                 millis = int((t % 1) * 100)
-                filename = f"frame_micro_{i:03d}_off{int(offset*10):+d}_{minutes}m{seconds:02d}s{millis:02d}.jpg"
+                filename = f"frame_micro_{i:03d}_off{int(offset * 10):+d}_{minutes}m{seconds:02d}s{millis:02d}.jpg"
                 path = os.path.join(output_dir, filename)
                 cv2.imwrite(path, frame)
 
-                enhanced_frames.append({
-                    "path": path,
-                    "timestamp": t,
-                    "frame_index": frame_idx,
-                    "ssim_score": -1.0,
-                    "is_micro_frame": True
-                })
+                enhanced_frames.append(
+                    {
+                        "path": path,
+                        "timestamp": t,
+                        "frame_index": frame_idx,
+                        "ssim_score": -1.0,
+                        "is_micro_frame": True,
+                    }
+                )
                 existing_timestamps.add(round(t, 1))
                 micro_count += 1
 
@@ -146,7 +150,7 @@ def _extract_micro_frames(
 class VideoPipeline:
     """Pipeline for silent screen recordings."""
 
-    def __init__(self, output_dir: str = None):
+    def __init__(self, output_dir: Optional[str] = None):
         self.output_dir = output_dir or config.paths.output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -154,18 +158,15 @@ class VideoPipeline:
         self,
         video_path: str,
         project_name: str,
-        ssim_threshold: float = None,
-        max_frames: int = None,
-        annotate: bool = None,
-        enable_micro_frames: bool = True
+        ssim_threshold: Optional[float] = None,
+        max_frames: Optional[int] = None,
+        annotate: Optional[bool] = None,
+        enable_micro_frames: bool = True,
     ) -> Optional[str]:
         """Process a silent screen recording into a PDD document."""
         t0 = time.time()
         tracker = reset_tracker()
         gemini_client.set_tracker(tracker)
-
-        ssim_threshold = ssim_threshold or config.frame.ssim_threshold
-        annotate = annotate if annotate is not None else config.annotation.enabled
 
         print_pipeline_header(
             "Silent Screen Recording",
@@ -173,214 +174,162 @@ class VideoPipeline:
             project_name=project_name,
             extra_info={
                 "OCR": "Available" if OCR_AVAILABLE else "Not available",
-                "Micro-frames": "Enabled" if enable_micro_frames else "Disabled",
-                "Workers": str(config.llm.max_workers)
-            }
+                "Workers": str(config.llm.max_workers),
+            },
         )
 
         if not os.path.exists(video_path):
             print(f"Error: Video not found: {video_path}")
             return None
 
-        video_info = get_video_info(video_path)
-        duration = video_info['duration']
-        fps = video_info['fps']
-        target_frames = compute_target_frames(duration, max_frames)
-
-        print(f"\n  Video: {duration:.0f}s ({duration/60:.1f}min), "
-              f"{video_info['width']}x{video_info['height']}, {fps:.1f}fps")
-        print(f"  Target frames: {target_frames}")
-
-        frames_dir = os.path.join(self.output_dir, "frames")
-        annotated_dir = os.path.join(self.output_dir, "annotated")
-        os.makedirs(frames_dir, exist_ok=True)
-
-        # ── PHASE 1: Frame Extraction ──
-        print(f"\n{'='*40}")
-        print("PHASE 1/5: Extracting key frames...")
-        print(f"{'='*40}")
+        # ── PHASE 1: Frame Extraction via VectorDB ──
+        print(f"\n{'=' * 40}")
+        print("PHASE 1/4: Uploading video & extracting frames...")
+        print(f"{'=' * 40}")
         t = time.time()
 
-        scene_changes = detect_scene_changes(video_path, ssim_threshold=ssim_threshold)
-        if enable_micro_frames and scene_changes:
-            scene_changes = _extract_micro_frames(video_path, scene_changes, frames_dir, fps)
-            
-        key_frames = select_key_frames(
-            scene_changes, output_dir=frames_dir,
-            max_frames=max_frames, video_path=video_path,
-            video_duration=duration
-        )
-        if not key_frames:
-            print("Error: No key frames extracted")
+        try:
+            upload_res = upload_video(video_path)
+            video_id = upload_res["video_id"]
+            print(f"  VectorDB Upload Success! video_id: {video_id}")
+            print(
+                f"  Extracted {upload_res['frames_extracted']} frames in {time.time() - t:.1f}s"
+            )
+        except Exception as e:
+            print(f"  Error uploading to VectorDB: {e}")
             return None
-        print(f"  ✓ {len(key_frames)} key frames ({time.time()-t:.0f}s)")
 
-        # ── PHASE 2: OCR + Auth Detection ──
-        print(f"\n{'='*40}")
-        print("PHASE 2/5: OCR + Auth Detection...")
-        print(f"{'='*40}")
+        frames_dir = os.path.join(
+            os.getcwd(), "vectordb_service", "data", video_id, "frames"
+        )
+        image_paths = []
+        if os.path.exists(frames_dir):
+            import glob
+
+            image_paths = sorted(glob.glob(os.path.join(frames_dir, "*.jpg")))
+
+        if not image_paths:
+            print("Error: No key frames extracted from VectorDB")
+            return None
+
+        # ── PHASE 2: OCR ──
+        print(f"\n{'=' * 40}")
+        print("PHASE 2/4: OCR...")
+        print(f"{'=' * 40}")
         t = time.time()
 
-        frame_paths = [kf["path"] for kf in key_frames]
-        ocr_results = _parallel_ocr(frame_paths, with_boxes=annotate)
+        ocr_results = _parallel_ocr(image_paths, with_boxes=False)
+        ocr_texts = []
+        for p in image_paths:
+            txt = ocr_results.get(p, {}).get("text", "").strip()
+            if txt:
+                ocr_texts.append(f"Frame {os.path.basename(p)} OCR:\n{txt}")
+        combined_ocr = "\n\n".join(ocr_texts)
 
-        auth_flags = []
-        auth_count = 0
-        for kf in key_frames:
-            ocr_data = ocr_results.get(kf["path"], {})
-            kf["ocr_text"] = ocr_data.get("text", "")
-            kf["ocr_boxes"] = ocr_data.get("boxes", [])
+        print(f"  ✓ OCR complete ({time.time() - t:.0f}s)")
 
-            auth_info = detect_auth_screen(kf["ocr_text"])
-            auth_flags.append(auth_info)
-            if auth_info["is_auth"]:
-                auth_count += 1
-
-        print(f"  ✓ OCR complete ({time.time()-t:.0f}s)")
-
-        # ── PHASE 3: Vision + Change Analysis ──
-        print(f"\n{'='*40}")
-        print("PHASE 3/5: Vision Analysis...")
-        print(f"{'='*40}")
+        # ── PHASE 3: Batch LLM Generation ──
+        print(f"\n{'=' * 40}")
+        print("PHASE 3/4: Batch LLM Generation...")
+        print(f"{'=' * 40}")
         t = time.time()
 
-        max_vision = _compute_max_vision_calls(len(key_frames)) + auth_count
-        original_max = config.llm.max_vision_calls
-        config.llm.max_vision_calls = max_vision
-
-        app_name = ""
-        if key_frames:
-            app_name = identify_application(key_frames[0]["path"])
-
-        change_data = detect_changes_between_frames(key_frames, ocr_results)
-
-        ocr_diffs = []
-        detected_operations = []
-        for i, cd in enumerate(change_data):
-            ocr_diffs.append(cd.get("text_diff", {}))
-            before_kf = key_frames[i] if i < len(key_frames) else {}
-            after_kf = key_frames[i + 1] if i + 1 < len(key_frames) else {}
-            ops = detect_operations_delta(before_kf.get('ocr_text', ''), after_kf.get('ocr_text', ''), "")
-            detected_operations.append(ops)
-
-        transitions = analyze_transitions_smart(
-            key_frames, ocr_diffs, detected_operations,
-            change_data, auth_flags=auth_flags
+        bundle = generate_pdd_bundle_batch(
+            transcript=f"This is a silent screen recording. Here is the OCR text from the frames:\n{combined_ocr}",
+            image_paths=image_paths,
+            audio_path=None,
+            project_name_hint=project_name,
         )
 
-        config.llm.max_vision_calls = original_max
+        if not project_name:
+            project_name = bundle["project_name"]
 
-        vision_used = sum(1 for tr in transitions if tr.get("used_vision"))
-        print(f"  ✓ {len(transitions)} transitions, {vision_used} vision ({time.time()-t:.0f}s)")
+        doc = bundle["document"]
+        proc = bundle["process"]
+        reqs = bundle["requirements"]
 
-        # ── PHASE 4: PDD Content Generation ──
-        print(f"\n{'='*40}")
-        print("PHASE 4/5: Generating PDD content...")
-        print(f"{'='*40}")
-        t = time.time()
+        process_steps = proc.get("process_steps", [])
+        detailed_steps = proc.get("detailed_steps", [])
 
-        # Step 4a: Synthesize Detailed Screen-Level Steps (Section 2.4)
-        detailed_pdd_steps = synthesize_pdd_steps(transitions, change_data, app_name=app_name)
-        print(f"  ✓ {len(detailed_pdd_steps)} Detailed Screen Steps generated")
-
-        # Step 4b: Synthesize High-Level Logical Steps (Section 2.2.2 & Flowchart)
-        logical_process_steps = generate_logical_process_steps(project_name, detailed_pdd_steps, app_name)
-        print(f"  ✓ {len(logical_process_steps)} Logical Process Steps generated")
-
-        # Format process steps for PDD Generator
-        formatted_process_steps = [
-            {"number": i + 1, "description": s} for i, s in enumerate(logical_process_steps)
-        ]
-
-        # Step 4c: Generate Narrative Sections
-        step_descriptions = [s["description"] for s in detailed_pdd_steps]
-        vision_descriptions = [kf.get("vision_description", kf.get("ocr_text", "")) for kf in key_frames]
-
-        sections = generate_all_sections_parallel(
-            project_name, app_name, step_descriptions, vision_descriptions
+        # Flowchart Generation
+        dot_code = generate_dot_from_transcript(
+            combined_ocr, project_name, process_steps
         )
-
-        purpose = sections.get("purpose") or ""
-        ov_just = sections.get("overview_justification") or {}
-        as_is = sections.get("as_is") or ""
-        to_be = sections.get("to_be") or ""
-        input_reqs = sections.get("prerequisites") or []
-        exceptions = sections.get("exceptions") or []
-        interfaces = sections.get("interfaces") or []
-
-        # Step 4d: Flowchart Generation (uses logical steps instead of detailed steps)
-        # Convert string list back to dict format expected by dot generator
-        logical_dicts = [{"description": s} for s in logical_process_steps]
-        dot_code = generate_flowchart_dot_from_steps(logical_dicts, project_name)
+        if dot_code:
+            save_dot_code(dot_code, project_name, self.output_dir)
         fc_path = generate_flowchart(dot_code, self.output_dir, project_name)
 
-        print(f"  ✓ Phase 4 complete ({time.time()-t:.0f}s)")
+        print(f"  ✓ Phase 3 complete ({time.time() - t:.0f}s)")
 
-        # ── PHASE 5: Document Assembly ──
-        print(f"\n{'='*40}")
-        print("PHASE 5/5: Generating document...")
-        print(f"{'='*40}")
+        # ── PHASE 4: Document Assembly & VectorDB Locate ──
+        print(f"\n{'=' * 40}")
+        print("PHASE 4/4: Locating UI Elements & Assembly...")
+        print(f"{'=' * 40}")
         t = time.time()
 
+        detailed_dicts = []
+        for i, s in enumerate(detailed_steps):
+            if isinstance(s, dict):
+                detailed_dicts.append(
+                    {
+                        "number": f"2.4.{i + 1}",
+                        "description": s.get("action", ""),
+                        "ui_target": s.get("ui_target", ""),
+                    }
+                )
+            else:
+                detailed_dicts.append(
+                    {"number": f"2.4.{i + 1}", "description": s, "ui_target": s}
+                )
+
         annotated_frames = {}
-        if annotate and detailed_pdd_steps:
-            for step in detailed_pdd_steps:
-                step_num = step["number"]
-                frame_path = step.get("frame_after_path", "")
-                change_region = step.get("change_region")
-                label = step["description"][:50]
-                if frame_path and os.path.exists(frame_path):
-                    ann_path = annotate_frame(
-                        frame_path=frame_path,
-                        output_dir=annotated_dir,
-                        step_number=step_num,
-                        change_region=change_region,
-                        action_label=label,
-                        enabled=annotate
-                    )
-                    if ann_path and os.path.exists(ann_path):
-                        annotated_frames[step_num] = ann_path
-            print(f"  ✓ {len(annotated_frames)} frames annotated")
+        for i, step in enumerate(detailed_dicts):
+            try:
+                query_text = step.get("ui_target") or step["description"]
+                res = query_locate(query=query_text, video_id=video_id, top_k=5)
+                url = res.get("annotated_image_url", "")
+                if url:
+                    filename = os.path.basename(url)
+                    local_annotated_path = os.path.join(frames_dir, filename)
+                    if os.path.exists(local_annotated_path):
+                        step["frame_after_path"] = local_annotated_path
+                        num_key = int(str(step["number"]).split(".")[-1])
+                        annotated_frames[num_key] = local_annotated_path
+            except Exception as e:
+                print(f"    Failed to locate frame for step {step['number']}: {e}")
+
+        process_steps_dicts = (
+            [{"number": i + 1, "description": s} for i, s in enumerate(process_steps)]
+            if process_steps
+            else []
+        )
 
         doc_path = build_document(
             project_name=project_name,
             output_dir=self.output_dir,
-            purpose=purpose,
-            overview=ov_just.get("overview", "") if isinstance(ov_just, dict) else "",
-            justification=ov_just.get("justification", "") if isinstance(ov_just, dict) else "",
-            as_is=as_is,
-            to_be=to_be,
-            process_steps=formatted_process_steps,     # The inferred logic loops/conditionals
-            input_requirements=input_reqs,
-            detailed_steps=detailed_pdd_steps,         # The 1-to-1 screenshot steps
-            interface_requirements=interfaces,
-            exception_handling=exceptions,
+            purpose=doc.get("purpose", ""),
+            overview=doc.get("overview", ""),
+            justification=doc.get("justification", ""),
+            as_is=doc.get("as_is", ""),
+            to_be=doc.get("to_be", ""),
+            process_steps=process_steps_dicts,
+            input_requirements=reqs.get("input_requirements", []),
+            detailed_steps=detailed_dicts,
+            interface_requirements=reqs.get("interface_requirements", []),
+            exception_handling=reqs.get("exception_handling", []),
             flowchart_path=fc_path,
-            app_name=app_name,
-            annotated_frames=annotated_frames
+            annotated_frames=annotated_frames,
         )
 
         persistent = save_persistent_document(doc_path, project_name)
-
         tracker.print_report()
         tracker.save_csv(project_name)
 
-        total = time.time() - t0
-
-        all_ops = set()
-        for ops_list in detected_operations:
-            for op in ops_list:
-                if op.get("confidence", 0) >= 0.7:
-                    all_ops.add(op["display_name"])
-
         stats = {
-            "Process Steps": len(formatted_process_steps),
-            "Detailed Steps": len(detailed_pdd_steps),
-            "Frames": len(key_frames),
-            "Vision calls": vision_used,
+            "Process Steps": len(process_steps_dicts),
+            "Detailed Steps": len(detailed_dicts),
+            "Frames": len(image_paths),
+            "Annotated Frames": len(annotated_frames),
         }
-        if all_ops:
-            stats["Operations"] = ', '.join(sorted(all_ops))
-
-        print_pipeline_footer(persistent, project_name, stats, total)
+        print_pipeline_footer(persistent, project_name, stats, time.time() - t0)
         return doc_path

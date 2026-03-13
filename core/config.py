@@ -15,9 +15,11 @@ from typing import Dict, List
 # Gemini API Configuration
 # ============================================================
 
+
 @dataclass
 class GeminiConfig:
     """Google Gemini API configuration."""
+
     api_key: str = os.getenv("GEMINI_API_KEY", "")
     text_model: str = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-flash-preview")
     vision_model: str = os.getenv("GEMINI_VISION_MODEL", "gemini-3-flash-preview")
@@ -35,21 +37,25 @@ class GeminiConfig:
 # Whisper Configuration (audio pipeline only)
 # ============================================================
 
+
 @dataclass
 class WhisperConfig:
     """Whisper transcription configuration."""
+
     model_name: str = "base"
-    language: str = None       # None = auto-detect
-    task: str = "transcribe"   # "transcribe" or "translate"
+    language: str = None  # None = auto-detect
+    task: str = "transcribe"  # "transcribe" or "translate"
 
 
 # ============================================================
 # Document Configuration
 # ============================================================
 
+
 @dataclass
 class DocumentConfig:
     """Document generation configuration."""
+
     document_type: str = "PDD"
     document_type_full: str = "Process Definition Document"
     classification: str = "Internal"
@@ -65,12 +71,16 @@ class DocumentConfig:
 # Frame Extraction (silent video pipeline)
 # ============================================================
 
+
 @dataclass
 class FrameExtractionConfig:
     """Frame extraction settings for silent video pipeline."""
-    ssim_threshold: float = 0.92  # Increased sensitivity to catch small popups/dropdowns
+
+    ssim_threshold: float = (
+        0.92  # Increased sensitivity to catch small popups/dropdowns
+    )
     min_frame_gap_seconds: float = 1.0
-    max_key_frames: int = 60      # Increased max frames for granular steps
+    max_key_frames: int = 60  # Increased max frames for granular steps
     sample_interval_seconds: float = 0.5
     histogram_threshold: float = 0.8
     frames_per_minute: int = 6
@@ -81,9 +91,11 @@ class FrameExtractionConfig:
 # Annotation Configuration
 # ============================================================
 
+
 @dataclass
 class AnnotationConfig:
     """Screenshot annotation settings."""
+
     enabled: bool = True
     box_color: tuple = (0, 0, 255)
     box_thickness: int = 3
@@ -98,9 +110,11 @@ class AnnotationConfig:
 # Image Preprocessing
 # ============================================================
 
+
 @dataclass
 class ImageConfig:
     """Image preprocessing before sending to Gemini vision."""
+
     max_width: int = 1024
     max_height: int = 768
     jpeg_quality: int = 80
@@ -110,9 +124,11 @@ class ImageConfig:
 # Flowchart Configuration
 # ============================================================
 
+
 @dataclass
 class FlowchartConfig:
     """Flowchart rendering settings."""
+
     dpi: int = 300
     max_width_inches: float = 7.0
     font_name: str = "Arial"
@@ -124,9 +140,11 @@ class FlowchartConfig:
 # PII Redaction Configuration
 # ============================================================
 
+
 @dataclass
 class RedactionConfig:
     """PII redaction settings."""
+
     enabled: bool = True
     redact_emails: bool = True
     redact_phone_numbers: bool = True
@@ -141,9 +159,11 @@ class RedactionConfig:
 # LLM Parameters
 # ============================================================
 
+
 @dataclass
 class LLMParams:
     """Parameters for Gemini generation calls."""
+
     temperature: float = 0.2  # Lower temp = more literal quoting, less abstracting
     top_p: float = 0.85
     max_output_tokens: int = 12000
@@ -152,9 +172,9 @@ class LLMParams:
     request_timeout: int = 120
 
     # Prompt sizing — larger chunks for fewer calls
-    max_sample_text: int = 18000
-    max_sample_small: int = 8000
-    max_sample_entity: int = 8000
+    max_sample_text: int = 100000
+    max_sample_small: int = 100000
+    max_sample_entity: int = 100000
     chunk_size: int = 8000
     overlap_size: int = 300
     max_chunks: int = 3
@@ -187,9 +207,11 @@ class LLMParams:
 # Path Configuration
 # ============================================================
 
+
 @dataclass
 class PathConfig:
     """Default paths."""
+
     output_dir: str = "./outputs"
     ffmpeg_path: str = "ffmpeg"
 
@@ -239,7 +261,17 @@ EXCEL_OPERATIONS = {
     "pivot_table": ["pivot", "pivot table", "pivottable"],
     "duplicate_removal": ["remove duplicate", "duplicate", "dedup"],
     "conditional_formatting": ["conditional format", "highlight cells"],
-    "formula": ["formula", "sum", "average", "count", "countif", "sumif", "if(", "index", "match"],
+    "formula": [
+        "formula",
+        "sum",
+        "average",
+        "count",
+        "countif",
+        "sumif",
+        "if(",
+        "index",
+        "match",
+    ],
     "copy_paste": ["copy", "paste", "paste special", "paste values"],
     "find_replace": ["find and replace", "find & replace", "ctrl+h"],
     "chart": ["chart", "graph", "bar chart", "line chart", "pie chart"],
@@ -250,13 +282,29 @@ EXCEL_OPERATIONS = {
 
 WEB_OPERATIONS = {
     "login": [
-        "login", "log in", "sign in", "signin", "authenticate",
-        "credentials", "username", "password", "forgot password",
-        "remember me", "sso", "mfa", "otp", "verification code",
+        "login",
+        "log in",
+        "sign in",
+        "signin",
+        "authenticate",
+        "credentials",
+        "username",
+        "password",
+        "forgot password",
+        "remember me",
+        "sso",
+        "mfa",
+        "otp",
+        "verification code",
     ],
     "logout": [
-        "logout", "log out", "sign out", "signout", "end session",
-        "session expired", "signed out",
+        "logout",
+        "log out",
+        "sign out",
+        "signout",
+        "end session",
+        "session expired",
+        "signed out",
     ],
     "navigate": ["navigate", "go to", "click on", "menu", "tab", "sidebar"],
     "search": ["search", "search bar", "query", "find"],
@@ -279,14 +327,34 @@ GENERAL_OPERATIONS = {
 }
 
 AUTH_VISUAL_INDICATORS = [
-    "username", "user name", "user id", "userid", "email",
-    "password", "passcode", "pin",
-    "sign in", "log in", "login", "signin",
-    "sign out", "log out", "logout", "signout",
-    "forgot", "remember me", "keep me",
-    "submit", "continue", "next",
-    "welcome", "hello",
-    "sso", "single sign", "okta", "azure ad",
+    "username",
+    "user name",
+    "user id",
+    "userid",
+    "email",
+    "password",
+    "passcode",
+    "pin",
+    "sign in",
+    "log in",
+    "login",
+    "signin",
+    "sign out",
+    "log out",
+    "logout",
+    "signout",
+    "forgot",
+    "remember me",
+    "keep me",
+    "submit",
+    "continue",
+    "next",
+    "welcome",
+    "hello",
+    "sso",
+    "single sign",
+    "okta",
+    "azure ad",
 ]
 
 
@@ -294,9 +362,11 @@ AUTH_VISUAL_INDICATORS = [
 # Unified Config Instance
 # ============================================================
 
+
 @dataclass
 class AppConfig:
     """Master configuration object."""
+
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     document: DocumentConfig = field(default_factory=DocumentConfig)

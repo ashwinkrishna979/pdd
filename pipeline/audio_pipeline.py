@@ -27,15 +27,20 @@ from core.utils import build_entity_hint, redact_pii_from_image
 from audio.video_to_audio import convert_video_to_audio
 from audio.transcriber import transcribe_audio, read_transcript
 
+from core.vectordb_client import upload_video, query_locate
+
 from llm_tasks.meeting_compact import (
-    generate_doc_bundle_from_transcript,
-    generate_dot_from_transcript
+    generate_pdd_bundle_batch,
+    generate_dot_from_transcript,
 )
 
 from pipeline.common import (
-    save_persistent_document, save_dot_code,
-    generate_flowchart, build_document,
-    print_pipeline_header, print_pipeline_footer
+    save_persistent_document,
+    save_dot_code,
+    generate_flowchart,
+    build_document,
+    print_pipeline_header,
+    print_pipeline_footer,
 )
 from document.pdd_generator import PDDGenerator
 
@@ -48,10 +53,7 @@ class AudioPipeline:
         os.makedirs(self.output_dir, exist_ok=True)
 
     def _extract_evenly_spaced_frames(
-        self,
-        video_path: str,
-        frames_dir: str,
-        num_frames: int
+        self, video_path: str, frames_dir: str, num_frames: int
     ) -> List[Tuple[str, float]]:
         """Extract evenly spaced frames across the entire video."""
         import cv2
@@ -108,7 +110,7 @@ class AudioPipeline:
         video_path: str,
         transcript_path: str,
         frames_dir: str,
-        max_frames: int = 30
+        max_frames: int = 30,
     ) -> List[Tuple[str, float, str]]:
         """Extract frames at transcript action keyword timestamps."""
         import cv2
@@ -117,17 +119,15 @@ class AudioPipeline:
 
         lines = []
         try:
-            with open(transcript_path, 'r', encoding='utf-8') as f:
+            with open(transcript_path, "r", encoding="utf-8") as f:
                 for line in f:
                     m = re.match(
-                        r'\[(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\]\s+(.*)',
-                        line.strip()
+                        r"\[(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\]\s+(.*)", line.strip()
                     )
                     if m:
-                        lines.append({
-                            "timestamp": float(m.group(1)),
-                            "text": m.group(3).strip()
-                        })
+                        lines.append(
+                            {"timestamp": float(m.group(1)), "text": m.group(3).strip()}
+                        )
         except Exception as e:
             print(f"    [Frames] Error reading transcript: {e}")
             return []
@@ -136,6 +136,7 @@ class AudioPipeline:
             return []
 
         from core.config import ACTION_KEYWORDS
+
         all_kw = set()
         for kl in ACTION_KEYWORDS.values():
             for kw in kl:
@@ -181,7 +182,9 @@ class AudioPipeline:
                 frames.append((frame_path, ts, al["text"]))
 
         cap.release()
-        print(f"    [Frames] Extracted {len(frames)} keyword frames from {len(deduped)} timestamps")
+        print(
+            f"    [Frames] Extracted {len(frames)} keyword frames from {len(deduped)} timestamps"
+        )
         return frames
 
     def _assign_frames_to_steps(
@@ -204,14 +207,14 @@ class AudioPipeline:
             for i, step in enumerate(detailed_dicts):
                 frame_idx = int(i * num_frames / num_steps)
                 frame_idx = min(frame_idx, num_frames - 1)
-                step_num = step.get("number", f"2.4.{i+1}")
+                step_num = step.get("number", f"2.4.{i + 1}")
                 assigned[str(step_num)] = sorted_frames[frame_idx][0]
         else:
             interval = max(1, num_steps // num_frames)
             frame_idx = 0
             for i, step in enumerate(detailed_dicts):
                 if frame_idx < num_frames and (i % interval == 0 or i == 0):
-                    step_num = step.get("number", f"2.4.{i+1}")
+                    step_num = step.get("number", f"2.4.{i + 1}")
                     assigned[str(step_num)] = sorted_frames[frame_idx][0]
                     frame_idx += 1
 
@@ -223,7 +226,7 @@ class AudioPipeline:
         video_path: str,
         project_name: str = None,
         whisper_model: str = None,
-        transcript_path: str = None
+        transcript_path: str = None,
     ) -> Optional[str]:
         """Process a meeting recording into a PDD document."""
         t0 = time.time()
@@ -236,24 +239,24 @@ class AudioPipeline:
             project_name=project_name or "(auto-detect)",
             extra_info={
                 "Mode": "Consolidated (3-4 LLM calls)",
-            }
+            },
         )
 
         if not os.path.exists(video_path):
             print(f"Error: {video_path} not found")
             return None
 
-        # ── Step 1: Get Transcript ──
+        print("\n[1/5] Extracting audio and transcribing...")
         if transcript_path and os.path.exists(transcript_path):
-            print(f"\n[1/4] Using provided transcript: {transcript_path}")
+            print(f"  Using provided transcript: {transcript_path}")
         else:
-            print("\n[1/4] Extracting audio and transcribing...")
             audio = convert_video_to_audio(video_path, self.output_dir)
             if not audio:
                 return None
             transcript_path = transcribe_audio(
-                audio, self.output_dir,
-                model_name=whisper_model or config.whisper.model_name
+                audio,
+                self.output_dir,
+                model_name=whisper_model or config.whisper.model_name,
             )
             if not transcript_path:
                 return None
@@ -263,12 +266,44 @@ class AudioPipeline:
             return None
         print(f"  Transcript: {len(transcript):,} chars")
 
-        # ── Step 2: Consolidated LLM Calls (3 calls) ──
-        print("\n[2/4] Consolidated LLM extraction (3 calls)...")
+        print(
+            "\n[2/5] Uploading video to VectorDB for scene extraction and indexing..."
+        )
+        t = time.time()
+        try:
+            upload_res = upload_video(video_path)
+            video_id = upload_res["video_id"]
+            print(f"  VectorDB Upload Success! video_id: {video_id}")
+            print(
+                f"  Extracted {upload_res['frames_extracted']} frames in {time.time() - t:.1f}s"
+            )
+        except Exception as e:
+            print(f"  Error uploading to VectorDB: {e}")
+            return None
+
+        frames_dir = os.path.join(
+            os.getcwd(), "vectordb_service", "data", video_id, "frames"
+        )
+        image_paths = []
+        if os.path.exists(frames_dir):
+            import glob
+
+            image_paths = sorted(glob.glob(os.path.join(frames_dir, "*.jpg")))
+
+        print(f"\n[3/5] Batch LLM extraction (1 call)...")
         t = time.time()
 
-        bundle = generate_doc_bundle_from_transcript(
-            transcript, project_name_hint=project_name
+        audio_for_gemini = (
+            transcript_path.replace(".txt", ".mp3") if transcript_path else None
+        )
+        if not (audio_for_gemini and os.path.exists(audio_for_gemini)):
+            audio_for_gemini = None
+
+        bundle = generate_pdd_bundle_batch(
+            transcript=transcript,
+            image_paths=image_paths,
+            audio_path=audio_for_gemini,
+            project_name_hint=project_name,
         )
 
         if not project_name:
@@ -292,84 +327,58 @@ class AudioPipeline:
         print(f"  Inputs: {len(reqs.get('input_requirements', []))}")
         print(f"  Interfaces: {len(reqs.get('interface_requirements', []))}")
         print(f"  Exceptions: {len(reqs.get('exception_handling', []))}")
-        print(f"  ({time.time()-t:.0f}s)")
+        print(f"  ({time.time() - t:.0f}s)")
 
-        # ── Step 3: Flowchart + Frame Extraction ──
-        print("\n[3/4] Flowchart & screenshots...")
+        print("\n[4/5] Flowchart & screenshots...")
 
         t = time.time()
-        dot_code = generate_dot_from_transcript(
-            transcript, project_name, process_steps
-        )
+        dot_code = generate_dot_from_transcript(transcript, project_name, process_steps)
         if dot_code:
             save_dot_code(dot_code, project_name, self.output_dir)
         fc_path = generate_flowchart(dot_code, self.output_dir, project_name)
-        print(f"  Flowchart ({time.time()-t:.0f}s)")
+        print(f"  Flowchart ({time.time() - t:.0f}s)")
 
-        # Build detailed step dicts
-        detailed_dicts = [
-            {"number": f"2.4.{i+1}", "description": s}
-            for i, s in enumerate(detailed_steps)
-        ]
-
-        # Extract frames
-        frames_dir = os.path.join(self.output_dir, "frames")
-        all_frames = []
-
-        if os.path.exists(video_path) and detailed_dicts:
-            t = time.time()
-
-            if transcript_path and os.path.exists(transcript_path):
-                kw_frames = self._extract_keyword_frames(
-                    video_path, transcript_path, frames_dir,
-                    max_frames=min(len(detailed_dicts) * 2, 50)
+        detailed_dicts = []
+        for i, s in enumerate(detailed_steps):
+            if isinstance(s, dict):
+                detailed_dicts.append(
+                    {
+                        "number": f"2.4.{i + 1}",
+                        "description": s.get("action", ""),
+                        "ui_target": s.get("ui_target", ""),
+                    }
                 )
-                for fp, ts, _ in kw_frames:
-                    all_frames.append((fp, ts))
-
-            target_total = max(len(detailed_dicts), 15)
-            remaining_needed = target_total - len(all_frames)
-
-            if remaining_needed > 0:
-                even_frames = self._extract_evenly_spaced_frames(
-                    video_path, frames_dir, num_frames=remaining_needed
+            else:
+                detailed_dicts.append(
+                    {"number": f"2.4.{i + 1}", "description": s, "ui_target": s}
                 )
-                existing_timestamps = set(ts for _, ts in all_frames)
-                for fp, ts in even_frames:
-                    if not any(abs(ts - et) < 2.0 for et in existing_timestamps):
-                        all_frames.append((fp, ts))
-                        existing_timestamps.add(ts)
 
-            print(f"  Total frames extracted: {len(all_frames)} ({time.time()-t:.0f}s)")
+        print("  Querying VectorDB to map detailed steps to annotated frames...")
+        annotated_frames = {}
+        for i, step in enumerate(detailed_dicts):
+            try:
+                query_text = step.get("ui_target") or step["description"]
+                res = query_locate(query=query_text, video_id=video_id, top_k=5)
+                # annotated_image_url example: /static/vid/frames/annotated.jpg
+                url = res.get("annotated_image_url", "")
+                if url:
+                    filename = os.path.basename(url)
+                    local_annotated_path = os.path.join(frames_dir, filename)
 
-            step_frame_map = self._assign_frames_to_steps(all_frames, detailed_dicts)
+                    if os.path.exists(local_annotated_path):
+                        step["frame_after_path"] = local_annotated_path
+                        num_key = int(str(step["number"]).split(".")[-1])
+                        annotated_frames[num_key] = local_annotated_path
+            except Exception as e:
+                print(f"    Failed to locate frame for step {step['number']}: {e}")
 
-            for step in detailed_dicts:
-                step_num = step.get("number", "")
-                frame_path = step_frame_map.get(str(step_num), "")
-                if frame_path:
-                    step["frame_after_path"] = frame_path
-
-        # ── Step 4: Generate Document ──
-        print("\n[4/4] Generating document...")
+        print("\n[5/5] Generating document...")
 
         process_steps_dicts = None
         if process_steps:
             process_steps_dicts = [
-                {"number": i + 1, "description": s}
-                for i, s in enumerate(process_steps)
+                {"number": i + 1, "description": s} for i, s in enumerate(process_steps)
             ]
-
-        annotated_frames = {}
-        for step in detailed_dicts:
-            step_num = step.get("number", "")
-            frame_path = step.get("frame_after_path", "")
-            if frame_path and os.path.exists(frame_path):
-                try:
-                    num_key = int(str(step_num).split('.')[-1])
-                    annotated_frames[num_key] = frame_path
-                except (ValueError, IndexError):
-                    pass
 
         if annotated_frames:
             print(f"  {len(annotated_frames)} frames will be embedded in document")
@@ -382,7 +391,7 @@ class AudioPipeline:
             justification=doc.get("justification", ""),
             as_is=doc.get("as_is", ""),
             to_be=doc.get("to_be", ""),
-            process_steps=process_steps_dicts,
+            process_steps=process_steps_dicts or [],
             input_requirements=reqs.get("input_requirements", []),
             detailed_steps=detailed_dicts,
             interface_requirements=reqs.get("interface_requirements", []),
@@ -398,14 +407,15 @@ class AudioPipeline:
 
         total = time.time() - t0
         print_pipeline_footer(
-            persistent, project_name,
+            persistent,
+            project_name,
             {
                 "Steps": len(process_steps),
                 "Detailed": len(detailed_steps),
                 "Frames embedded": len(annotated_frames),
-                "LLM Calls": len(tracker.calls)
+                "LLM Calls": len(tracker.calls),
             },
-            total
+            total,
         )
         return doc_path
 
@@ -413,6 +423,7 @@ class AudioPipeline:
     def _ocr_available() -> bool:
         try:
             from video.ocr_engine import OCR_AVAILABLE
+
             return OCR_AVAILABLE
         except ImportError:
             return False
