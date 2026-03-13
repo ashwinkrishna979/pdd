@@ -51,8 +51,9 @@ class LocateResponse(BaseModel):
     selection_reason: str
     omniparser_elements_count: int
     located_element: str
-    bbox: list[float]
-    bbox_reason: str
+    highlight_type: str
+    region: list[float]
+    region_reason: str
     annotated_image_url: str
 
 

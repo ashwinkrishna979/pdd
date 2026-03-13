@@ -34,7 +34,7 @@ def query_and_locate(
     body: LocateRequest,
     query_service: QueryService = Depends(get_query_service),
 ):
-    """Full pipeline: vector search → Gemini frame selection → OmniParser → bbox annotation."""
+    """Full pipeline: vector search → Gemini frame selection → OmniParser → highlight annotation."""
 
     result = query_service.query_and_locate(body.query, body.top_k, body.video_id)
 
@@ -47,7 +47,8 @@ def query_and_locate(
         selection_reason=result["selection_reason"],
         omniparser_elements_count=result["omniparser_elements_count"],
         located_element=result["located_element"],
-        bbox=result["bbox"],
-        bbox_reason=result["bbox_reason"],
+        highlight_type=result["highlight_type"],
+        region=result["region"],
+        region_reason=result["region_reason"],
         annotated_image_url=result["annotated_image_url"],
     )

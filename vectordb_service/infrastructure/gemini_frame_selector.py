@@ -33,24 +33,41 @@ _SELECT_PROMPT = (
 
 _BBOX_PROMPT = (
     "You are an expert UI element locator. You will receive:\n"
-    "1. A user query describing an action on a UI\n"
+    "1. A user query describing an action/step on a UI\n"
     "2. A screenshot frame\n"
     "3. OmniParser output listing detected UI elements with their bounding boxes\n\n"
     "IMPORTANT: The user's query may be vague or imprecise. Do NOT take it literally.\n"
-    "1. First, understand the user's TRUE INTENT — what element do they want to interact with?\n"
+    "1. First, understand the user's TRUE INTENT — what area of the screen is relevant?\n"
     "2. Carefully examine the screenshot to understand the full UI context.\n"
     "3. Review ALL OmniParser elements and their positions.\n"
-    "4. Match the user's intent to the most relevant UI element, even if the wording "
-    "doesn't exactly match the element's text.\n"
-    "5. Consider element types — if the user says 'click', look for clickable elements "
-    "(buttons, links, input fields, cells). If they say 'type', look for input fields.\n\n"
+    "4. Identify the REGION of the screen that is most relevant to the user's query.\n"
+    "5. Consider nearby related elements (labels, buttons, input fields, surrounding context).\n\n"
+    "HIGHLIGHT SHAPE DECISION:\n"
+    "You must decide the best way to highlight the relevant area:\n"
+    '- "circle" — DEFAULT choice. Use for most elements: buttons, icons, links, '
+    "input fields, small controls, menu items, labels, toolbar items, individual "
+    "UI components, or any compact/medium-sized focal area.\n"
+    '- "square" — ONLY use when highlighting a large rectangular area such as '
+    "an entire dialog box, a full panel/sidebar, a large table, a full form, "
+    "or a major section of the screen. If in doubt, prefer circle.\n"
+    '- "none" — use when the query refers to the entire screen, a full-page action '
+    "(e.g. 'the page loads'), or there is no specific element to highlight.\n\n"
+    "HIGHLIGHT SIZE:\n"
+    "Size the region appropriately based on context:\n"
+    "- For a single small element (button, link, icon): keep the region tight around it "
+    "with minimal padding.\n"
+    "- For a group of related elements (form fields with labels, a toolbar section): "
+    "expand the region to cover the whole group.\n"
+    "- For a large area (a panel, dialog, table): size the region to cover the full area.\n\n"
     "The OmniParser elements have bounding boxes in normalised [x1, y1, x2, y2] "
     "format (0.0–1.0 relative to image dimensions).\n\n"
     "Return ONLY a JSON object:\n"
-    '  {"element_text": "<text/content of the matched element>",'
-    ' "bbox": [x1, y1, x2, y2],'
-    ' "reason": "<explain what the element is and why it matches the user intent>"}\n'
-    "The bbox values must be normalised floats between 0.0 and 1.0."
+    '  {"element_text": "<text/content of the primary element in the region>",'
+    ' "highlight_type": "circle|square|none",'
+    ' "region": [x1, y1, x2, y2],'
+    ' "reason": "<explain what the region contains and why it matches the user intent>"}\n'
+    "The region values must be normalised floats between 0.0 and 1.0. "
+    "If highlight_type is \"none\", set region to [0, 0, 1, 1]."
 )
 
 
@@ -158,12 +175,12 @@ def locate_bounding_box(
     omniparser_elements: list[dict],
     model: str = "gemini-2.5-flash",
 ) -> dict:
-    """Send the chosen frame + OmniParser elements to Gemini to locate the target element bbox."""
+    """Send the chosen frame + OmniParser elements to Gemini to locate the target region."""
     client = genai.Client(api_key=api_key)
 
     img = _load_image(frame_path)
     if img is None:
-        return {"element_text": "", "bbox": [0, 0, 0, 0], "reason": "image load failed"}
+        return {"element_text": "", "region": [0, 0, 0, 0], "reason": "image load failed"}
 
     elements_str = json.dumps(omniparser_elements, indent=2)
 
@@ -171,7 +188,7 @@ def locate_bounding_box(
         img,
         f'User query: "{query}"\n\n'
         f"OmniParser detected elements:\n{elements_str}\n\n"
-        "Identify the UI element the user is referring to and return its bounding box.",
+        "Identify the region of the screen relevant to the user's query and return its bounding region.",
     ]
 
     config = types.GenerateContentConfig(
@@ -187,5 +204,10 @@ def locate_bounding_box(
 
     raw = (response.text or "").strip()
     result = _parse_json(raw)
-    logger.info("Gemini located element '%s' at %s", result.get("element_text", ""), result.get("bbox", []))
+    logger.info(
+        "Gemini located element '%s' [%s] at region %s",
+        result.get("element_text", ""),
+        result.get("highlight_type", "none"),
+        result.get("region", []),
+    )
     return result

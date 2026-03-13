@@ -6,7 +6,7 @@ import os
 import replicate
 
 from config import Settings
-from infrastructure.bbox_drawer import draw_bounding_box
+from infrastructure.bbox_drawer import draw_highlight
 from infrastructure.embedding_service import EmbeddingService
 from infrastructure.gemini_frame_selector import locate_bounding_box, select_best_frame
 from infrastructure.omniparser_client import parse_frame
@@ -96,8 +96,8 @@ class QueryService:
         # Extract elements with bounding boxes for Gemini
         elements = self._extract_elements(omniparser_output)
 
-        # Step 4: Gemini locates the target element bounding box
-        logger.info("Asking Gemini to locate bounding box for: %s", query_text)
+        # Step 4: Gemini locates the target region
+        logger.info("Asking Gemini to locate region for: %s", query_text)
         try:
             bbox_result = locate_bounding_box(
                 api_key=self._settings.gemini_api_key,
@@ -108,16 +108,20 @@ class QueryService:
             )
         except Exception:
             logger.exception("Gemini locate_bounding_box failed")
-            bbox_result = {"element_text": "", "bbox": None, "reason": "Gemini API error"}
+            bbox_result = {"element_text": "", "highlight_type": "none", "region": None, "reason": "Gemini API error"}
 
-        bbox = bbox_result.get("bbox") or [0, 0, 0, 0]
+        highlight_type = bbox_result.get("highlight_type", "none")
+        if highlight_type not in ("circle", "square", "none"):
+            highlight_type = "none"
+        region = bbox_result.get("region") or [0, 0, 0, 0]
 
-        # Step 5: Draw bounding box on the frame
+        # Step 5: Draw highlight on the frame
         vid = selected_match["metadata"].get("video_id", "")
         output_dir = os.path.join(self._settings.data_dir, vid, "frames")
-        annotated_path = draw_bounding_box(
+        annotated_path = draw_highlight(
             image_path=selected_path,
-            bbox=bbox,
+            region=region,
+            highlight_type=highlight_type,
             output_dir=output_dir,
         )
         annotated_filename = os.path.basename(annotated_path)
@@ -129,8 +133,9 @@ class QueryService:
             "selection_reason": selection.get("reason", ""),
             "omniparser_elements_count": len(elements),
             "located_element": bbox_result.get("element_text", ""),
-            "bbox": bbox,
-            "bbox_reason": bbox_result.get("reason", ""),
+            "highlight_type": highlight_type,
+            "region": region,
+            "region_reason": bbox_result.get("reason", ""),
             "annotated_image_url": annotated_url,
         }
 
