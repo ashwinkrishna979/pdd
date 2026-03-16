@@ -199,8 +199,9 @@ class VideoPipeline:
             print(f"  Error uploading to VectorDB: {e}")
             return None
 
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         frames_dir = os.path.join(
-            os.getcwd(), "vectordb_service", "data", video_id, "frames"
+            _project_root, "vectordb_service", "data", video_id, "frames"
         )
         image_paths = []
         if os.path.exists(frames_dir):
@@ -282,7 +283,6 @@ class VideoPipeline:
                     {"number": f"2.4.{i + 1}", "description": s, "ui_target": s}
                 )
 
-        annotated_frames = {}
         for i, step in enumerate(detailed_dicts):
             try:
                 query_text = step.get("ui_target") or step["description"]
@@ -293,8 +293,8 @@ class VideoPipeline:
                     local_annotated_path = os.path.join(frames_dir, filename)
                     if os.path.exists(local_annotated_path):
                         step["frame_after_path"] = local_annotated_path
-                        num_key = int(str(step["number"]).split(".")[-1])
-                        annotated_frames[num_key] = local_annotated_path
+                    else:
+                        print(f"    [Warn] Annotated frame not found: {local_annotated_path}")
             except Exception as e:
                 print(f"    Failed to locate frame for step {step['number']}: {e}")
 
@@ -318,7 +318,6 @@ class VideoPipeline:
             interface_requirements=reqs.get("interface_requirements", []),
             exception_handling=reqs.get("exception_handling", []),
             flowchart_path=fc_path,
-            annotated_frames=annotated_frames,
         )
 
         persistent = save_persistent_document(doc_path, project_name)
@@ -329,7 +328,6 @@ class VideoPipeline:
             "Process Steps": len(process_steps_dicts),
             "Detailed Steps": len(detailed_dicts),
             "Frames": len(image_paths),
-            "Annotated Frames": len(annotated_frames),
         }
         print_pipeline_footer(persistent, project_name, stats, time.time() - t0)
         return doc_path

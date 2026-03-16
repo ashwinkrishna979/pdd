@@ -16,13 +16,11 @@ Consolidated flow (3 LLM calls):
 
 import os
 import time
-import re
-from typing import Optional, List, Tuple, Dict
+from typing import Optional
 
 from core.config import config
 from core.gemini_client import gemini_client
 from core.token_tracker import reset_tracker
-from core.utils import build_entity_hint, redact_pii_from_image
 
 from audio.video_to_audio import convert_video_to_audio
 from audio.transcriber import transcribe_audio, read_transcript
@@ -42,7 +40,6 @@ from pipeline.common import (
     print_pipeline_header,
     print_pipeline_footer,
 )
-from document.pdd_generator import PDDGenerator
 
 
 class AudioPipeline:
@@ -51,175 +48,6 @@ class AudioPipeline:
     def __init__(self, output_dir: str = None):
         self.output_dir = output_dir or config.paths.output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-
-    def _extract_evenly_spaced_frames(
-        self, video_path: str, frames_dir: str, num_frames: int
-    ) -> List[Tuple[str, float]]:
-        """Extract evenly spaced frames across the entire video."""
-        import cv2
-
-        os.makedirs(frames_dir, exist_ok=True)
-
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            print("    [Frames] Cannot open video")
-            return []
-
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        duration = total_frames_count / fps if fps > 0 else 0
-
-        if duration <= 0:
-            cap.release()
-            print("    [Frames] Cannot determine video duration")
-            return []
-
-        print(f"    [Frames] Video: {duration:.0f}s, extracting {num_frames} frames...")
-
-        start_t = duration * 0.02
-        end_t = duration * 0.98
-        interval = (end_t - start_t) / (num_frames + 1)
-
-        frames = []
-        for i in range(num_frames):
-            timestamp = start_t + interval * (i + 1)
-            frame_idx = int(timestamp * fps)
-
-            if frame_idx >= total_frames_count:
-                continue
-
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-
-            if ret and frame is not None:
-                minutes = int(timestamp // 60)
-                seconds = int(timestamp % 60)
-                filename = f"frame_{i:03d}_{minutes}m{seconds:02d}s.jpg"
-                frame_path = os.path.join(frames_dir, filename)
-                cv2.imwrite(frame_path, frame)
-
-                redact_pii_from_image(frame_path)
-                frames.append((frame_path, timestamp))
-
-        cap.release()
-        print(f"    [Frames] Extracted {len(frames)} frames")
-        return frames
-
-    def _extract_keyword_frames(
-        self,
-        video_path: str,
-        transcript_path: str,
-        frames_dir: str,
-        max_frames: int = 30,
-    ) -> List[Tuple[str, float, str]]:
-        """Extract frames at transcript action keyword timestamps."""
-        import cv2
-
-        os.makedirs(frames_dir, exist_ok=True)
-
-        lines = []
-        try:
-            with open(transcript_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    m = re.match(
-                        r"\[(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\]\s+(.*)", line.strip()
-                    )
-                    if m:
-                        lines.append(
-                            {"timestamp": float(m.group(1)), "text": m.group(3).strip()}
-                        )
-        except Exception as e:
-            print(f"    [Frames] Error reading transcript: {e}")
-            return []
-
-        if not lines:
-            return []
-
-        from core.config import ACTION_KEYWORDS
-
-        all_kw = set()
-        for kl in ACTION_KEYWORDS.values():
-            for kw in kl:
-                all_kw.add(kw.lower())
-
-        action_lines = []
-        for tl in lines:
-            if any(kw in tl["text"].lower() for kw in all_kw):
-                action_lines.append(tl)
-
-        if not action_lines:
-            return []
-
-        deduped = [action_lines[0]]
-        for al in action_lines[1:]:
-            if al["timestamp"] - deduped[-1]["timestamp"] > 3.0:
-                deduped.append(al)
-
-        if len(deduped) > max_frames:
-            step = len(deduped) // max_frames
-            deduped = deduped[::step][:max_frames]
-
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            return []
-
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frames = []
-
-        for i, al in enumerate(deduped):
-            ts = al["timestamp"]
-            cap.set(cv2.CAP_PROP_POS_MSEC, ts * 1000)
-            ret, frame = cap.read()
-
-            if ret and frame is not None:
-                minutes = int(ts // 60)
-                seconds = int(ts % 60)
-                filename = f"frame_kw_{i:03d}_{minutes}m{seconds:02d}s.jpg"
-                frame_path = os.path.join(frames_dir, filename)
-                cv2.imwrite(frame_path, frame)
-
-                redact_pii_from_image(frame_path)
-                frames.append((frame_path, ts, al["text"]))
-
-        cap.release()
-        print(
-            f"    [Frames] Extracted {len(frames)} keyword frames from {len(deduped)} timestamps"
-        )
-        return frames
-
-    def _assign_frames_to_steps(
-        self,
-        frames: List[Tuple[str, float]],
-        detailed_dicts: List[Dict],
-    ) -> Dict[str, str]:
-        """Assign frames to detailed steps by distributing evenly."""
-        if not frames or not detailed_dicts:
-            return {}
-
-        num_steps = len(detailed_dicts)
-        num_frames = len(frames)
-
-        sorted_frames = sorted(frames, key=lambda x: x[1])
-
-        assigned = {}
-
-        if num_frames >= num_steps:
-            for i, step in enumerate(detailed_dicts):
-                frame_idx = int(i * num_frames / num_steps)
-                frame_idx = min(frame_idx, num_frames - 1)
-                step_num = step.get("number", f"2.4.{i + 1}")
-                assigned[str(step_num)] = sorted_frames[frame_idx][0]
-        else:
-            interval = max(1, num_steps // num_frames)
-            frame_idx = 0
-            for i, step in enumerate(detailed_dicts):
-                if frame_idx < num_frames and (i % interval == 0 or i == 0):
-                    step_num = step.get("number", f"2.4.{i + 1}")
-                    assigned[str(step_num)] = sorted_frames[frame_idx][0]
-                    frame_idx += 1
-
-        print(f"    [Frames] Assigned {len(assigned)} frames to {num_steps} steps")
-        return assigned
 
     def process(
         self,
@@ -281,8 +109,9 @@ class AudioPipeline:
             print(f"  Error uploading to VectorDB: {e}")
             return None
 
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         frames_dir = os.path.join(
-            os.getcwd(), "vectordb_service", "data", video_id, "frames"
+            _project_root, "vectordb_service", "data", video_id, "frames"
         )
         image_paths = []
         if os.path.exists(frames_dir):
@@ -354,20 +183,20 @@ class AudioPipeline:
                 )
 
         print("  Querying VectorDB to map detailed steps to annotated frames...")
-        annotated_frames = {}
+        frames_matched = 0
         for i, step in enumerate(detailed_dicts):
             try:
-                query_text = f"UI Element like {step.get("ui_target")} describing{step["description"]}" #TO DO : add both description and ui target
+                query_text = f"UI Element like {step.get('ui_target')} describing {step['description']}"
                 res = query_locate(query=query_text, video_id=video_id, top_k=5)
-                # annotated_image_url example: /static/vid/frames/annotated.jpg
                 url = res.get("annotated_image_url", "")
                 if url:
                     filename = os.path.basename(url)
                     local_annotated_path = os.path.join(frames_dir, filename)
-
                     if os.path.exists(local_annotated_path):
                         step["frame_after_path"] = local_annotated_path
-                        annotated_frames[step["number"]] = local_annotated_path
+                        frames_matched += 1
+                    else:
+                        print(f"    [Warn] Annotated frame not found: {local_annotated_path}")
             except Exception as e:
                 print(f"    Failed to locate frame for step {step['number']}: {e}")
 
@@ -379,8 +208,8 @@ class AudioPipeline:
                 {"number": i + 1, "description": s} for i, s in enumerate(process_steps)
             ]
 
-        if annotated_frames:
-            print(f"  {len(annotated_frames)} frames will be embedded in document")
+        if frames_matched:
+            print(f"  {frames_matched} frames will be embedded in document")
 
         doc_path = build_document(
             project_name=project_name,
@@ -396,7 +225,6 @@ class AudioPipeline:
             interface_requirements=reqs.get("interface_requirements", []),
             exception_handling=reqs.get("exception_handling", []),
             flowchart_path=fc_path,
-            annotated_frames=annotated_frames,
         )
 
         persistent = save_persistent_document(doc_path, project_name)
@@ -411,7 +239,7 @@ class AudioPipeline:
             {
                 "Steps": len(process_steps),
                 "Detailed": len(detailed_steps),
-                "Frames embedded": len(annotated_frames),
+                "Frames embedded": frames_matched,
                 "LLM Calls": len(tracker.calls),
             },
             total,

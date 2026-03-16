@@ -126,7 +126,6 @@ def build_document(
     exception_handling: list = None,
     flowchart_path: str = "",
     app_name: str = "",
-    annotated_frames: Dict[int, str] = None
 ) -> str:
     """
     Build the final PDD/BRD DOCX document.
@@ -154,7 +153,6 @@ def build_document(
         exception_handling=exception_handling,
         flowchart_path=flowchart_path,
         output_path=doc_path,
-        annotated_frames=annotated_frames
     )
     return doc_path
 

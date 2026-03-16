@@ -35,46 +35,6 @@ def _strip_markdown_for_docx(text: str) -> str:
     text = re.sub(r"`([^`]+)`", r"\1", text)
     return text
 
-#TO do remove this function, find a good logic
-def _resolve_step_number(step_num, annotated_frames: Dict) -> str:
-    """
-    Try multiple key formats to find a frame in annotated_frames.
-    step_num could be: "2.4.1", 1, "1", etc.
-    annotated_frames keys could be: 1, "1", "2.4.1", etc.
-    """
-    if not annotated_frames:
-        return ""
-
-    # Direct lookup
-    if step_num in annotated_frames:
-        return annotated_frames[step_num]
-
-    # Try string version
-    str_num = str(step_num)
-    if str_num in annotated_frames:
-        return annotated_frames[str_num]
-
-    # Extract trailing integer from "2.4.X"
-    if isinstance(step_num, str) and "." in step_num:
-        try:
-            num_key = int(step_num.split(".")[-1])
-            if num_key in annotated_frames:
-                return annotated_frames[num_key]
-            if str(num_key) in annotated_frames:
-                return annotated_frames[str(num_key)]
-        except (ValueError, IndexError):
-            pass
-
-    # Try int conversion
-    try:
-        int_key = int(step_num)
-        if int_key in annotated_frames:
-            return annotated_frames[int_key]
-    except (ValueError, TypeError):
-        pass
-
-    return ""
-
 
 def _convert_svg_to_png(svg_path: str) -> Optional[str]:
     """
@@ -342,11 +302,8 @@ class PDDGenerator:
         exception_handling: List[Dict] = None,
         flowchart_path: str = "",
         output_path: str = "PDD.docx",
-        annotated_frames: Dict = None,
     ) -> str:
         """Generate complete PDD/BRD document."""
-
-        annotated_frames = annotated_frames or {}
 
         doc_type = config.document.document_type
         doc_type_full = config.document.document_type_full
@@ -585,13 +542,8 @@ class PDDGenerator:
                         r.font.color.rgb = RGBColor(80, 80, 150)
 
 
-            #To do: change this logic. it is blindly taking frame after path.
-
                 # Find screenshot
-                frame_path =step_num
-
-                if not frame_path or not os.path.exists(frame_path):
-                    frame_path = step.get("frame_after_path", "")
+                frame_path = step.get("frame_after_path", "")
 
                 if frame_path and os.path.exists(frame_path):
                     if self._add_screenshot(frame_path, display_num):
