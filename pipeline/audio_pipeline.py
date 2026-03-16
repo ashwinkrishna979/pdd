@@ -357,7 +357,7 @@ class AudioPipeline:
         annotated_frames = {}
         for i, step in enumerate(detailed_dicts):
             try:
-                query_text = step.get("ui_target") or step["description"]
+                query_text = f"UI Element like {step.get("ui_target")} describing{step["description"]}" #TO DO : add both description and ui target
                 res = query_locate(query=query_text, video_id=video_id, top_k=5)
                 # annotated_image_url example: /static/vid/frames/annotated.jpg
                 url = res.get("annotated_image_url", "")
@@ -367,8 +367,7 @@ class AudioPipeline:
 
                     if os.path.exists(local_annotated_path):
                         step["frame_after_path"] = local_annotated_path
-                        num_key = int(str(step["number"]).split(".")[-1])
-                        annotated_frames[num_key] = local_annotated_path
+                        annotated_frames[step["number"]] = local_annotated_path
             except Exception as e:
                 print(f"    Failed to locate frame for step {step['number']}: {e}")
 

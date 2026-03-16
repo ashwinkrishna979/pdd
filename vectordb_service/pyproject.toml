@@ -19,4 +19,5 @@ dependencies = [
     "google-genai>=1.0.0",
     "Pillow>=11.0.0",
     "pydantic>=2.12.5",
+    "streamlit>=1.55.0",
 ]

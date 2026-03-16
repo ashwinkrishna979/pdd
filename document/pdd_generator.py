@@ -35,7 +35,7 @@ def _strip_markdown_for_docx(text: str) -> str:
     text = re.sub(r"`([^`]+)`", r"\1", text)
     return text
 
-
+#TO do remove this function, find a good logic
 def _resolve_step_number(step_num, annotated_frames: Dict) -> str:
     """
     Try multiple key formats to find a frame in annotated_frames.
@@ -584,8 +584,11 @@ class PDDGenerator:
                         r.font.size = Pt(9)
                         r.font.color.rgb = RGBColor(80, 80, 150)
 
+
+            #To do: change this logic. it is blindly taking frame after path.
+
                 # Find screenshot
-                frame_path = _resolve_step_number(step_num, annotated_frames)
+                frame_path =step_num
 
                 if not frame_path or not os.path.exists(frame_path):
                     frame_path = step.get("frame_after_path", "")
