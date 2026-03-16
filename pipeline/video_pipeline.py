@@ -207,7 +207,10 @@ class VideoPipeline:
         if os.path.exists(frames_dir):
             import glob
 
-            image_paths = sorted(glob.glob(os.path.join(frames_dir, "*.jpg")))
+            image_paths = sorted(
+                glob.glob(os.path.join(frames_dir, "*.jpg"))
+                + glob.glob(os.path.join(frames_dir, "*.png"))
+            )
 
         if not image_paths:
             print("Error: No key frames extracted from VectorDB")

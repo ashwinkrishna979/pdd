@@ -117,7 +117,10 @@ class AudioPipeline:
         if os.path.exists(frames_dir):
             import glob
 
-            image_paths = sorted(glob.glob(os.path.join(frames_dir, "*.jpg")))
+            image_paths = sorted(
+                glob.glob(os.path.join(frames_dir, "*.jpg"))
+                + glob.glob(os.path.join(frames_dir, "*.png"))
+            )
 
         print(f"\n[3/5] Batch LLM extraction (1 call)...")
         t = time.time()
