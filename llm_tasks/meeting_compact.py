@@ -895,62 +895,77 @@ def _ensure_process_data_defaults(result: Dict, entities: Dict):
             {
                 "action": f"Open {apps} and navigate to the login page.",
                 "ui_target": "Login page",
+                "screenshot_query": "application login page with username and password input fields",
             },
             {
                 "action": "Enter the configured credentials and authenticate.",
                 "ui_target": "Sign in button",
+                "screenshot_query": "login form with sign in button visible",
             },
             {
                 "action": "Navigate to the main processing module.",
                 "ui_target": "Main menu",
+                "screenshot_query": "main navigation menu with processing module options",
             },
             {
                 "action": "Select the appropriate data source or report.",
                 "ui_target": "Data source dropdown",
+                "screenshot_query": "data source selection dropdown menu open",
             },
             {
                 "action": "Apply the configured filters and criteria.",
                 "ui_target": "Filter button",
+                "screenshot_query": "filter panel with criteria fields and filter button",
             },
             {
                 "action": "Extract the matching records from the source.",
                 "ui_target": "Export button",
+                "screenshot_query": "data table with export button in toolbar",
             },
             {
                 "action": "Validate each record against the defined business rules.",
                 "ui_target": "Validation screen",
+                "screenshot_query": "validation results screen showing record status",
             },
             {
                 "action": "Flag records that fail validation checks.",
                 "ui_target": "Flag button",
+                "screenshot_query": "record list with flag button for failed validations",
             },
             {
                 "action": "Process each validated record according to the workflow.",
                 "ui_target": "Process button",
+                "screenshot_query": "processing screen with process action button",
             },
             {
                 "action": "Update the record status after processing.",
                 "ui_target": "Status dropdown",
+                "screenshot_query": "record detail view with status dropdown selector",
             },
             {
                 "action": "Capture processing results and timestamps.",
                 "ui_target": "Results table",
+                "screenshot_query": "results table showing processed records with timestamps",
             },
             {
                 "action": "Generate a summary report of all processed records.",
                 "ui_target": "Report generator",
+                "screenshot_query": "report generation screen with summary options",
             },
             {
                 "action": "Export the report to the configured output location.",
                 "ui_target": "Export report button",
+                "screenshot_query": "report view with export report button",
             },
             {
                 "action": "Log all execution details for audit purposes.",
                 "ui_target": "Log viewer",
+                "screenshot_query": "audit log viewer showing execution details",
             },
             {
                 "action": f"Close {apps} and terminate the session.",
                 "ui_target": "Logout button",
+                "screenshot_query": "application header with logout button visible",
             },
         ]
         print("    [DocBundle_ProcessData] Using fallback detailed steps")
@@ -1254,7 +1269,8 @@ JSON STRUCTURE REQUIRED:
     "detailed_steps": [
       {{
         "action": "Granular screen-level action with EXACT button names and navigation paths. Format with newlines for complex actions.",
-        "ui_target": "Exact UI element for querying (e.g. 'Export button' or 'Al Futtaim dropdown')"
+        "ui_target": "Exact UI element for querying (e.g. 'Export button' or 'Al Futtaim dropdown')",
+        "screenshot_query": "Detailed visual description of the EXACT screenshot frame used to infer this step — include the application name, page title, visible sections, distinctive UI elements, and layout. e.g. 'Autodesk admin portal user management page showing By User tab selected with team dropdown expanded listing Regional Group A and Regional Group B options in left panel'"
       }}
     ]
   }},
@@ -1294,6 +1310,13 @@ CRITICAL RULES FOR detailed_steps (Screen-level Actions):
 5. CONDITIONALS: If a conditional pop-up occurs, state it clearly: "If a Warning popup appears -> Select 'Continue', Then click 'Remove'."
 6. Every step MUST start with an action verb (e.g., Log in, Navigate, Click, Select, Go to). Do NOT start with "The system...".
 7. The `ui_target` field MUST be a hyper-focused, 3-5 word description of the PRIMARY button or element being interacted with in this step (e.g., "Export button", "User Management tab", "Categories Users checkbox"). This field is used for visual bounding-box search.
+8. The `screenshot_query` field MUST describe the EXACT screenshot frame you used to infer this step. Write a detailed visual description (15-30 words) as if telling someone what that specific frame looks like. Include:
+   - The application name and page/screen title visible in the frame
+   - Specific sections, panels, or tabs that are visible
+   - Distinctive UI elements like open dropdowns, selected checkboxes, highlighted rows, dialog boxes, or tooltips
+   - Any visible data, column headers, or labels that make the frame unique
+   This will be used as a CLIP embedding query to retrieve the matching frame from a vector database.
+   Example: "Autodesk admin portal user management page with By User tab active, team dropdown expanded showing Regional Group A and B options, user list table in background".
 
 TRANSCRIPT:
 {sample}
@@ -1366,13 +1389,14 @@ TRANSCRIPT:
                     if isinstance(step, dict):
                         action = str(step.get("action", "")).strip()
                         target = str(step.get("ui_target", "")).strip()
+                        sq = str(step.get("screenshot_query", "")).strip()
                         if action:
                             parsed_detailed.append(
-                                {"action": redact_pii_text(action), "ui_target": target}
+                                {"action": redact_pii_text(action), "ui_target": target, "screenshot_query": sq}
                             )
                     elif isinstance(step, str):
                         parsed_detailed.append(
-                            {"action": redact_pii_text(step), "ui_target": step}
+                            {"action": redact_pii_text(step), "ui_target": step, "screenshot_query": step}
                         )
             result["process"]["detailed_steps"] = parsed_detailed
 

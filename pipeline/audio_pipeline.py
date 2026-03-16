@@ -175,18 +175,19 @@ class AudioPipeline:
                         "number": f"2.4.{i + 1}",
                         "description": s.get("action", ""),
                         "ui_target": s.get("ui_target", ""),
+                        "screenshot_query": s.get("screenshot_query", ""),
                     }
                 )
             else:
                 detailed_dicts.append(
-                    {"number": f"2.4.{i + 1}", "description": s, "ui_target": s}
+                    {"number": f"2.4.{i + 1}", "description": s, "ui_target": s, "screenshot_query": s}
                 )
 
         print("  Querying VectorDB to map detailed steps to annotated frames...")
         frames_matched = 0
         for i, step in enumerate(detailed_dicts):
             try:
-                query_text = f"UI Element like {step.get('ui_target')} describing {step['description']}"
+                query_text = step.get("screenshot_query") or f"UI Element like {step.get('ui_target')} describing {step['description']}"
                 res = query_locate(query=query_text, video_id=video_id, top_k=5)
                 url = res.get("annotated_image_url", "")
                 if url:
