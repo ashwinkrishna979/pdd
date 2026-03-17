@@ -77,6 +77,8 @@ MONGO_DB_NAME=pdd_vectordb
 
 ### 3. Install & Run
 
+Each service runs in its own terminal. All services use [uv](https://docs.astral.sh/uv/) for dependency management.
+
 ```bash
 # Terminal 1 — VectorDB Service
 cd vectordb_service
@@ -85,13 +87,13 @@ uv run uvicorn main:app --port 8000
 
 # Terminal 2 — Backend
 cd backend
-pip install -r requirements.txt
-uvicorn main:app --port 8001
+uv sync
+uv run uvicorn main:app --port 8001
 
 # Terminal 3 — Frontend
 cd frontend
-pip install -r requirements.txt
-streamlit run streamlit_app.py
+uv sync
+uv run streamlit run streamlit_app.py
 ```
 
 Open http://localhost:8501 in your browser.
