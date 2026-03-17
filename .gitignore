@@ -44,6 +44,7 @@ logs/
 *.log
 
 # Data directories
+vectordb_service/data/
 data/input/*
 data/output/*
 data/intermediate/*
