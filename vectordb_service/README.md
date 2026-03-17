@@ -4,9 +4,9 @@ FastAPI service that indexes video frames as vector embeddings and supports text
 
 ## What it does
 
-1. **Upload a video** — detects scenes, extracts key frames (start/mid/end per scene), embeds each frame with CLIP ViT-L/14, and upserts 768-d vectors into Pinecone.
+1. **Upload a video** — detects scenes, extracts key frames (start/mid/end per scene), embeds each frame with CLIP ViT-L/14, upserts 768-d vectors into Pinecone, and stores frame images in MongoDB (GridFS).
 2. **Query by text** — embeds the query with CLIP, searches Pinecone for the most similar frames, and returns ranked results.
-3. **Query & Locate** — extends the query pipeline: Gemini selects the best frame, OmniParser detects UI elements, Gemini locates the target element, and a bounding box is drawn on the frame.
+3. **Query & Locate** — extends the query pipeline: Gemini selects the best frame, OmniParser detects UI elements, Gemini locates the target element, and a bounding box is drawn on the frame. Annotated images are stored in MongoDB.
 
 ## Pipeline: Query & Locate
 
@@ -35,6 +35,8 @@ uv run uvicorn main:app --reload
 | `PINECONE_API_KEY` | Pinecone API key |
 | `REPLICATE_API_TOKEN` | Replicate API token (for OmniParser) |
 | `GEMINI_API_KEY` | Google Gemini API key |
+| `MONGO_URI` | MongoDB connection URI (default: `mongodb://localhost:27017`) |
+| `MONGO_DB_NAME` | MongoDB database name (default: `pdd_vectordb`) |
 
 ## API Endpoints
 
@@ -71,9 +73,9 @@ Full pipeline: search + Gemini frame selection + OmniParser + bounding box annot
 
 Returns the selected frame, located element, bounding box coordinates, and annotated image URL.
 
-### `GET /static/{video_id}/frames/{filename}`
+### `GET /api/frames/image/{video_id}/{filename}`
 
-Serves extracted frame images (including annotated ones).
+Serves frame images (including annotated ones) from MongoDB GridFS.
 
 ### `GET /health`
 
@@ -89,7 +91,8 @@ vectordb_service/
 │   ├── dependencies.py              # Dependency injection
 │   └── routes/
 │       ├── video.py                 # Upload endpoint
-│       └── query.py                 # Query + Locate endpoints
+│       ├── query.py                 # Query + Locate endpoints
+│       └── frames.py               # Frame image serving (from MongoDB)
 ├── services/
 │   ├── video_service.py             # Video processing pipeline
 │   └── query_service.py             # Query + locate pipeline
@@ -101,10 +104,10 @@ vectordb_service/
 │   ├── gemini_frame_selector.py     # Gemini frame selection + bbox location
 │   ├── omniparser_client.py         # OmniParser via Replicate
 │   ├── bbox_drawer.py               # Bounding box drawing utility
+│   ├── mongo_frame_store.py         # MongoDB GridFS frame storage
 │   └── ...
 ├── domain/
 │   └── models.py                    # Pydantic request/response models
-└── data/                            # Extracted frames (per video_id)
 ```
 
 ## Key Configuration Defaults

@@ -3,9 +3,8 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-from api.routes import query, video
+from api.routes import query, video, frames
 from config import Settings
 
 logging.basicConfig(level=logging.INFO)
@@ -15,8 +14,8 @@ settings.configure_env()
 
 app = FastAPI(
     title="VectorDB Frame Service",
-    description="Upload videos, extract & index frames, and query them by text.",
-    version="0.1.0",
+    description="Upload videos, extract & index frames, and query them by text. Frames stored in MongoDB.",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -27,14 +26,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve extracted frame images as static files
-data_dir = os.path.abspath(settings.data_dir)
-os.makedirs(data_dir, exist_ok=True)
-app.mount("/static", StaticFiles(directory=data_dir), name="static")
-
 # Register routers
 app.include_router(video.router)
 app.include_router(query.router)
+app.include_router(frames.router)
 
 
 @app.get("/health")

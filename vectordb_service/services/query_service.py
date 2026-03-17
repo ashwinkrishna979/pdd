@@ -1,14 +1,17 @@
 """Handles text-based frame querying with Gemini frame selection, OmniParser analysis, and bounding box annotation."""
 
+import io
 import logging
 import os
+import tempfile
 
 import replicate
 
 from config import Settings
-from infrastructure.bbox_drawer import draw_highlight
+from infrastructure.bbox_drawer import draw_highlight, draw_highlight_to_bytes
 from infrastructure.embedding_service import EmbeddingService
 from infrastructure.gemini_frame_selector import locate_bounding_box, select_best_frame
+from infrastructure.mongo_frame_store import MongoFrameStore
 from infrastructure.omniparser_client import parse_frame
 from infrastructure.vector_store import VectorStore
 
@@ -21,10 +24,12 @@ class QueryService:
         settings: Settings,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
+        frame_store: MongoFrameStore,
     ) -> None:
         self._settings = settings
         self._embedding = embedding_service
         self._vector_store = vector_store
+        self._frame_store = frame_store
         self._replicate = replicate.Client(api_token=settings.replicate_api_token)
 
     def query_frames(self, query_text: str, top_k: int = 5, video_id: str | None = None) -> dict:
@@ -40,7 +45,8 @@ class QueryService:
             meta = m.get("metadata", {})
             vid = meta.get("video_id", "")
             filename = meta.get("filename", "")
-            image_url = f"/static/{vid}/frames/{filename}" if vid and filename else ""
+            # Frame images are now served via /api/frames/image/{video_id}/{filename}
+            image_url = f"/api/frames/image/{vid}/{filename}" if vid and filename else ""
 
             matches.append(
                 {
@@ -63,69 +69,86 @@ class QueryService:
         if not matches:
             return {"query": query_text, "error": "No matching frames found"}
 
-        # Build frame file paths from metadata
-        frame_paths: list[str] = []
-        for m in matches:
-            meta = m["metadata"]
-            vid = meta.get("video_id", "")
-            filename = meta.get("filename", "")
-            path = os.path.join(self._settings.data_dir, vid, "frames", filename)
-            frame_paths.append(path)
+        # Write matched frames from MongoDB to temp files (needed by Gemini/OmniParser)
+        with tempfile.TemporaryDirectory(prefix="pdd_query_") as tmp_dir:
+            frame_paths: list[str] = []
+            for m in matches:
+                meta = m["metadata"]
+                vid = meta.get("video_id", "")
+                filename = meta.get("filename", "")
+                tmp_path = self._frame_store.write_frame_to_tempfile(vid, filename, tmp_dir)
+                if tmp_path:
+                    frame_paths.append(tmp_path)
+                else:
+                    frame_paths.append("")
 
-        # Step 2: Gemini picks the best frame
-        logger.info("Asking Gemini to select best frame for: %s", query_text)
-        selection = select_best_frame(
-            api_key=self._settings.gemini_api_key,
-            query=query_text,
-            frame_paths=frame_paths,
-            model=self._settings.gemini_model,
-        )
-        selected_idx = selection.get("selected_frame_index", 0)
-        selected_idx = max(0, min(selected_idx, len(frame_paths) - 1))
-        selected_path = frame_paths[selected_idx]
-        selected_match = matches[selected_idx]
+            valid_paths = [p for p in frame_paths if p]
+            if not valid_paths:
+                return {"query": query_text, "error": "No frame images could be retrieved from MongoDB"}
 
-        # Step 3: OmniParser analyses the selected frame
-        logger.info("Running OmniParser on %s", selected_path)
-        omniparser_output = parse_frame(
-            image_path=selected_path,
-            model_version=self._settings.omniparser_model,
-            client=self._replicate,
-        )
-
-        # Extract elements with bounding boxes for Gemini
-        elements = self._extract_elements(omniparser_output)
-
-        # Step 4: Gemini locates the target region
-        logger.info("Asking Gemini to locate region for: %s", query_text)
-        try:
-            bbox_result = locate_bounding_box(
+            # Step 2: Gemini picks the best frame
+            logger.info("Asking Gemini to select best frame for: %s", query_text)
+            selection = select_best_frame(
                 api_key=self._settings.gemini_api_key,
                 query=query_text,
-                frame_path=selected_path,
-                omniparser_elements=elements,
+                frame_paths=[p for p in frame_paths if p],
                 model=self._settings.gemini_model,
             )
-        except Exception:
-            logger.exception("Gemini locate_bounding_box failed")
-            bbox_result = {"element_text": "", "highlight_type": "none", "region": None, "reason": "Gemini API error"}
+            selected_idx = selection.get("selected_frame_index", 0)
+            selected_idx = max(0, min(selected_idx, len(valid_paths) - 1))
+            selected_path = valid_paths[selected_idx]
+            # Map back to the original match
+            valid_match_indices = [i for i, p in enumerate(frame_paths) if p]
+            selected_match = matches[valid_match_indices[selected_idx]]
 
-        highlight_type = bbox_result.get("highlight_type", "none")
-        if highlight_type not in ("circle", "square", "none"):
-            highlight_type = "none"
-        region = bbox_result.get("region") or [0, 0, 0, 0]
+            # Step 3: OmniParser analyses the selected frame
+            logger.info("Running OmniParser on %s", selected_path)
+            omniparser_output = parse_frame(
+                image_path=selected_path,
+                model_version=self._settings.omniparser_model,
+                client=self._replicate,
+            )
 
-        # Step 5: Draw highlight on the frame
-        vid = selected_match["metadata"].get("video_id", "")
-        output_dir = os.path.join(self._settings.data_dir, vid, "frames")
-        annotated_path = draw_highlight(
-            image_path=selected_path,
-            region=region,
-            highlight_type=highlight_type,
-            output_dir=output_dir,
-        )
-        annotated_filename = os.path.basename(annotated_path)
-        annotated_url = f"/static/{vid}/frames/{annotated_filename}"
+            # Extract elements with bounding boxes for Gemini
+            elements = self._extract_elements(omniparser_output)
+
+            # Step 4: Gemini locates the target region
+            logger.info("Asking Gemini to locate region for: %s", query_text)
+            try:
+                bbox_result = locate_bounding_box(
+                    api_key=self._settings.gemini_api_key,
+                    query=query_text,
+                    frame_path=selected_path,
+                    omniparser_elements=elements,
+                    model=self._settings.gemini_model,
+                )
+            except Exception:
+                logger.exception("Gemini locate_bounding_box failed")
+                bbox_result = {"element_text": "", "highlight_type": "none", "region": None, "reason": "Gemini API error"}
+
+            highlight_type = bbox_result.get("highlight_type", "none")
+            if highlight_type not in ("circle", "square", "none"):
+                highlight_type = "none"
+            region = bbox_result.get("region") or [0, 0, 0, 0]
+
+            # Step 5: Draw highlight and store annotated image in MongoDB
+            vid = selected_match["metadata"].get("video_id", "")
+            annotated_bytes = draw_highlight_to_bytes(
+                image_path=selected_path,
+                region=region,
+                highlight_type=highlight_type,
+            )
+            base = os.path.splitext(selected_match["metadata"].get("filename", "frame"))[0]
+            annotated_filename = f"{base}_annotated.png"
+
+            self._frame_store.save_frame(
+                video_id=vid,
+                filename=annotated_filename,
+                image_bytes=annotated_bytes,
+                content_type="image/png",
+                metadata={"type": "annotated", "query": query_text},
+            )
+            annotated_url = f"/api/frames/image/{vid}/{annotated_filename}"
 
         return {
             "query": query_text,
