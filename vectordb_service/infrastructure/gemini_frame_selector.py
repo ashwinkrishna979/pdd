@@ -44,12 +44,14 @@ _BBOX_PROMPT = (
     "5. Consider nearby related elements (labels, buttons, input fields, surrounding context).\n\n"
     "HIGHLIGHT SHAPE DECISION:\n"
     "You must decide the best way to highlight the relevant area:\n"
-    '- "circle" — DEFAULT choice. Use for most elements: buttons, icons, links, '
-    "input fields, small controls, menu items, labels, toolbar items, individual "
-    "UI components, or any compact/medium-sized focal area.\n"
-    '- "square" — ONLY use when highlighting a large rectangular area such as '
-    "an entire dialog box, a full panel/sidebar, a large table, a full form, "
-    "or a major section of the screen. If in doubt, prefer circle.\n"
+    '- "circle" — Use ONLY for small, compact areas: a single button, icon, link, '
+    "small input field, checkbox, radio button, toggle, or any individual small UI "
+    "control that corresponds to ONE or very few OmniParser elements.\n"
+    '- "square" — DEFAULT choice. Use when the relevant area is larger and combines '
+    "multiple OmniParser elements — for example a group of form fields, a toolbar "
+    "section, a menu with multiple items, a dialog box, a panel/sidebar, a table, "
+    "a form, or any medium-to-large region of the screen. If the region spans more "
+    "than a couple of OmniParser bounding boxes, use square.\n"
     '- "none" — use when the query refers to the entire screen, a full-page action '
     "(e.g. 'the page loads'), or there is no specific element to highlight.\n\n"
     "HIGHLIGHT SIZE:\n"
