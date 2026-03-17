@@ -3,23 +3,34 @@ Backend FastAPI Application.
 Serves as the business logic layer for PDD generation.
 """
 
-import logging
+
 import os
 import sys
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure backend dir is in path for importing core/llm_tasks/etc.
 _backend_dir = os.path.dirname(os.path.abspath(__file__))
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
+# Ensure workspace root is in path for vectordb_service import
+_workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _workspace_root not in sys.path:
+    sys.path.insert(0, _workspace_root)
+
+import logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(_backend_dir, ".env"))
 
 from api.routes import pipeline, health, documents
+
+# Mount vectordb_service as a sub-API
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../vectordb_service')))
+from vectordb_service.main import app as vectordb_app
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,3 +51,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(pipeline.router)
 app.include_router(documents.router)
+app.mount("/vectordb", vectordb_app)

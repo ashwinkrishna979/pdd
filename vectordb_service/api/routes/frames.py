@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
-from api.dependencies import get_mongo_frame_store
+from vectordb_service.api.dependencies import get_mongo_frame_store
 from infrastructure.mongo_frame_store import MongoFrameStore
 
 router = APIRouter(prefix="/api/frames", tags=["frames"])

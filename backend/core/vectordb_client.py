@@ -3,7 +3,7 @@ import os
 import tempfile
 from typing import Dict, Any, List, Optional
 
-VECTORDB_URL = os.getenv("VECTORDB_URL", "http://localhost:8000")
+VECTORDB_URL = os.getenv("VECTORDB_URL", "http://localhost:8001/vectordb")
 
 
 def upload_video(video_path: str) -> Dict[str, Any]:

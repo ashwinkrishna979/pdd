@@ -4,7 +4,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import query, video, frames
+from vectordb_service.api.routes import query, video, frames
 from config import Settings
 
 logging.basicConfig(level=logging.INFO)

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import get_query_service
+from vectordb_service.api.dependencies import get_query_service
 from domain.models import (
     FrameMatch,
     LocateRequest,

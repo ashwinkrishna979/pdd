@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
-from api.dependencies import get_video_service
+from vectordb_service.api.dependencies import get_video_service
 from domain.models import UploadResponse
 from services.video_service import VideoService
 
