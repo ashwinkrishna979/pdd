@@ -34,7 +34,7 @@ from video.ocr_engine import ocr_frame, OCR_AVAILABLE
 from video.change_detector import detect_changes_between_frames
 from video.frame_annotator import annotate_frame
 
-from core.vectordb_client import upload_video, query_locate, download_all_frames, download_frame
+from core.vectordb_client import upload_video, query_locate, download_all_frames, download_frame, delete_video
 from llm_tasks.meeting_compact import (
     generate_pdd_bundle_batch,
     generate_dot_from_transcript,
@@ -318,6 +318,13 @@ class VideoPipeline:
         persistent = save_persistent_document(doc_path, project_name)
         tracker.print_report()
         tracker.save_csv(project_name)
+
+        # Clean up MongoDB + Pinecone data for this video
+        if video_id:
+            if delete_video(video_id):
+                print(f"  🗑  VectorDB cleanup complete for video {video_id}")
+            else:
+                print(f"  [Warn] VectorDB cleanup failed for video {video_id}")
 
         stats = {
             "Process Steps": len(process_steps_dicts),

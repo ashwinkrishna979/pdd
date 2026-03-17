@@ -25,7 +25,7 @@ from core.token_tracker import reset_tracker
 from audio.video_to_audio import convert_video_to_audio
 from audio.transcriber import transcribe_audio, read_transcript
 
-from core.vectordb_client import upload_video, query_locate, download_all_frames, download_frame
+from core.vectordb_client import upload_video, query_locate, download_all_frames, download_frame, delete_video
 
 from llm_tasks.meeting_compact import (
     generate_pdd_bundle_batch,
@@ -223,6 +223,13 @@ class AudioPipeline:
         )
 
         persistent = save_persistent_document(doc_path, project_name)
+
+        # Clean up MongoDB + Pinecone data for this video
+        if video_id:
+            if delete_video(video_id):
+                print(f"  🗑  VectorDB cleanup complete for video {video_id}")
+            else:
+                print(f"  [Warn] VectorDB cleanup failed for video {video_id}")
 
         tracker.print_report()
         tracker.save_csv(project_name)

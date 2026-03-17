@@ -36,6 +36,16 @@ def download_frame(video_id: str, filename: str, dest_dir: str) -> Optional[str]
     return path
 
 
+def delete_video(video_id: str) -> bool:
+    """Delete all frames and vectors for a video from the VectorDB service."""
+    url = f"{VECTORDB_URL}/api/videos/{video_id}"
+    try:
+        response = requests.delete(url, timeout=30)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def download_all_frames(video_id: str, dest_dir: str) -> List[str]:
     """Download all frame images for a video from the VectorDB service.
 

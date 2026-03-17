@@ -104,3 +104,13 @@ class VideoService:
             "frames_extracted": len(frames),
             "frames_indexed": len(vectors_to_upsert),
         }
+
+    def delete_video(self, video_id: str) -> dict:
+        """Delete all MongoDB frames and Pinecone vectors for a video."""
+        frames_deleted = self._frame_store.delete_video_frames(video_id)
+        try:
+            self._vector_store.delete_by_video_id(video_id)
+        except Exception:
+            logger.exception("Pinecone delete failed for video %s", video_id)
+        logger.info("Deleted video %s: %d frames removed from MongoDB", video_id, frames_deleted)
+        return {"video_id": video_id, "frames_deleted": frames_deleted}

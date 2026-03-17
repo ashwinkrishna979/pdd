@@ -54,5 +54,9 @@ class VectorStore:
             kwargs["filter"] = filter
         return self._index.query(**kwargs)
 
+    def delete_by_video_id(self, video_id: str) -> None:
+        """Delete all vectors whose metadata.video_id matches."""
+        self._index.delete(filter={"video_id": {"$eq": video_id}})
+
     def stats(self) -> dict:
         return self._index.describe_index_stats()

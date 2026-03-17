@@ -35,3 +35,13 @@ def upload_video(
         frames_indexed=result["frames_indexed"],
         message="Video processed and indexed successfully.",
     )
+
+
+@router.delete("/{video_id}")
+def delete_video(
+    video_id: str,
+    video_service: VideoService = Depends(get_video_service),
+):
+    """Delete all frames (MongoDB + Pinecone) for a video after PDD generation."""
+    result = video_service.delete_video(video_id)
+    return {"status": "deleted", **result}
