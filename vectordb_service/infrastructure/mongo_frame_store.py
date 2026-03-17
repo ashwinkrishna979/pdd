@@ -24,7 +24,7 @@ class MongoFrameStore:
         self._meta = self._db["frame_metadata"]
         self._meta.create_index([("video_id", 1), ("filename", 1)], unique=True)
         self._meta.create_index("video_id")
-        logger.info("MongoFrameStore connected to %s / %s", mongo_uri, db_name)
+        logger.info("MongoFrameStore connected to db: %s", db_name)
 
     def save_frame(
         self,

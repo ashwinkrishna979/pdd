@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     omniparser_model: str = "microsoft/omniparser-v2:49cf3d41b8d3aca1360514e83be4c97131ce8f0d99abfc365526d8384caa88df"
     cors_origins: List[str] = ["*"]
 
-    # MongoDB settings for frame storage
-    mongo_uri: str = "mongodb://localhost:27017"
+    # MongoDB settings for frame storage (set MONGO_URI in .env)
+    mongo_uri: str = ""
     mongo_db_name: str = "pdd_vectordb"
 
     model_config = {"env_file": ".env"}
