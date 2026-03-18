@@ -1,0 +1,35 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "cairosvg>=2.9.0",
+    "fastapi>=0.115.0",
+    "google-genai>=1.0.0",
+    "graphviz>=0.20.1",
+    "openai-whisper>=20231117",
+    "opencv-python>=4.10.0",
+    "openpyxl>=3.1.5",
+    "pillow>=11.0.0",
+    "pydantic>=2.12.5",
+    "pydub>=0.25.1",
+    "pytesseract>=0.3.13",
+    "python-docx>=1.1.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.18",
+    "requests>=2.31.0",
+    "svglab>=0.5.0",
+    "tqdm>=4.66.0",
+    "uvicorn>=0.34.0",
+    "wand>=0.7.0",
+    "pydantic-settings>=2.7.0",
+    "numpy>=2.0.0",
+    "scenedetect[opencv]>=0.6.0",
+    "pinecone>=5.0.0",
+    "torch>=2.5.0",
+    "transformers>=4.47.0",
+    "replicate>=1.0.0",
+    "pymongo>=4.7.0",
+    "dotenv>=0.9.9",
+]

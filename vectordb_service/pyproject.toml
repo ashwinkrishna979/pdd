@@ -1,0 +1,23 @@
+[project]
+name = "vectordb-service"
+version = "0.1.0"
+description = "FastAPI service for video frame indexing and querying using vector embeddings"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "python-multipart>=0.0.18",
+    "pydantic-settings>=2.7.0",
+    "opencv-python>=4.10.0",
+    "numpy>=2.0.0",
+    "scenedetect[opencv]>=0.6.0",
+    "pinecone>=5.0.0",
+    "torch>=2.5.0",
+    "transformers>=4.47.0",
+    "replicate>=1.0.0",
+    "google-genai>=1.0.0",
+    "Pillow>=11.0.0",
+    "pydantic>=2.12.5",
+    "pymongo>=4.7.0",
+]

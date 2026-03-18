@@ -98,10 +98,41 @@ uv run streamlit run streamlit_app.py
 
 Open http://localhost:8501 in your browser.
 
-## Pipelines
+## Backend API Endpoints
 
-**Meeting Recording (Audio+Video):**
-Video → FFmpeg → Whisper transcript → Gemini LLM (sections + steps) → Flowchart → PDD
+### Health Check
 
-**Silent Screen Recording (Video Only):**
-Video → SSIM scene detection → Frame extraction → OCR → Gemini Vision → Step synthesis → PDD
+- **GET /health**
+  - Returns health status and Gemini API configuration.
+  - Response: `{ status, gemini_configured, gemini_available, gemini_model }`
+
+---
+
+### Pipeline
+
+- **POST /api/pipeline/process**
+  - Submit a video for PDD/BRD generation.
+  - Accepts: video file, transcript (file/text), project details, options.
+  - Response: `{ job_id, status, message }`
+
+- **GET /api/pipeline/status/{job_id}**
+  - Check the status of a pipeline job.
+  - Response: `{ job_id, status, message, document_filename, project_name }`
+
+- **GET /api/pipeline/download/{job_id}**
+  - Download the generated document for a completed job.
+  - Returns: DOCX file.
+
+---
+
+### Documents
+
+- **GET /api/documents/** 
+  - List all generated documents in the outputs directory.
+  - Response: `[ { filename, size_bytes } ]`
+
+- **GET /api/documents/download/{filename}**
+  - Download a generated document by filename.
+  - Returns: DOCX file.
+
+---

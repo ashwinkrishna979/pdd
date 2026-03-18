@@ -44,6 +44,7 @@ logs/
 *.log
 
 # Data directories
+vectordb_service/data/
 data/input/*
 data/output/*
 data/intermediate/*
@@ -52,8 +53,10 @@ data/models/*
 !data/output/.gitkeep
 !data/intermediate/.gitkeep
 !data/models/.gitkeep
+vectordb_service/.venv
 
-# Model cache
+# Generated outputs
+backend/outputs/
 *.bin
 *.pt
 *.pth
@@ -79,4 +82,5 @@ docs/_build/
 .dmypy.json
 dmypy.json
 
-outputs/
+backend/outputs/
+inputs/
