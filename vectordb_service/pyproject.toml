@@ -20,4 +20,5 @@ dependencies = [
     "Pillow>=11.0.0",
     "pydantic>=2.12.5",
     "pymongo>=4.7.0",
+    "certifi>=2026.2.25",
 ]

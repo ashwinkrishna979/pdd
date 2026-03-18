@@ -77,3 +77,4 @@ class HealthResponse(BaseModel):
     gemini_configured: bool
     gemini_available: bool
     gemini_model: Optional[str] = None
+    gemini_error: Optional[str] = None
