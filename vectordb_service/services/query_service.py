@@ -59,7 +59,7 @@ class QueryService:
 
         return {"query": query_text, "results": matches}
 
-    def query_and_locate(self, query_text: str, top_k: int = 5, video_id: str | None = None) -> dict:
+    def query_and_locate(self, query_text: str, top_k: int = 5, video_id: str | None = None, description: str | None = None) -> dict:
         """Full pipeline: vector search → Gemini frame selection → OmniParser → Gemini bbox → draw bbox."""
 
         # Step 1: Vector similarity search
@@ -87,10 +87,11 @@ class QueryService:
                 return {"query": query_text, "error": "No frame images could be retrieved from MongoDB"}
 
             # Step 2: Gemini picks the best frame
-            logger.info("Asking Gemini to select best frame for: %s", query_text)
+            gemini_query = description if description else query_text
+            logger.info("Asking Gemini to select best frame for: %s", gemini_query)
             selection = select_best_frame(
                 api_key=self._settings.gemini_api_key,
-                query=query_text,
+                query=gemini_query,
                 frame_paths=[p for p in frame_paths if p],
                 model=self._settings.gemini_model,
             )
@@ -113,11 +114,11 @@ class QueryService:
             elements = self._extract_elements(omniparser_output)
 
             # Step 4: Gemini locates the target region
-            logger.info("Asking Gemini to locate region for: %s", query_text)
+            logger.info("Asking Gemini to locate region for: %s", gemini_query)
             try:
                 bbox_result = locate_bounding_box(
                     api_key=self._settings.gemini_api_key,
-                    query=query_text,
+                    query=gemini_query,
                     frame_path=selected_path,
                     omniparser_elements=elements,
                     model=self._settings.gemini_model,

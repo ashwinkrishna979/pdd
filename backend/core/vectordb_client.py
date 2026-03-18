@@ -15,9 +15,11 @@ def upload_video(video_path: str) -> Dict[str, Any]:
     return response.json()
 
 
-def query_locate(query: str, video_id: str, top_k: int = 5) -> Dict[str, Any]:
+def query_locate(query: str, video_id: str, top_k: int = 5, description: str | None = None) -> Dict[str, Any]:
     url = f"{VECTORDB_URL}/api/frames/query/locate"
     payload = {"query": query, "video_id": video_id, "top_k": top_k}
+    if description is not None:
+        payload["description"] = description
     response = requests.post(url, json=payload)
     response.raise_for_status()
     return response.json()

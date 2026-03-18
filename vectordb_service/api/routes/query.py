@@ -36,7 +36,7 @@ def query_and_locate(
 ):
     """Full pipeline: vector search → Gemini frame selection → OmniParser → highlight annotation."""
 
-    result = query_service.query_and_locate(body.query, body.top_k, body.video_id)
+    result = query_service.query_and_locate(body.query, body.top_k, body.video_id, body.description)
 
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])

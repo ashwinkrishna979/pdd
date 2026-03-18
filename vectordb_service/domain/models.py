@@ -43,6 +43,7 @@ class LocateRequest(BaseModel):
     query: str
     top_k: int = 5
     video_id: str | None = None
+    description: str | None = None
 
 
 class LocateResponse(BaseModel):

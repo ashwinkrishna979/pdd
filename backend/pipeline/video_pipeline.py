@@ -281,7 +281,7 @@ class VideoPipeline:
         for i, step in enumerate(detailed_dicts):
             try:
                 query_text = step.get("screenshot_query") or step.get("ui_target") or step["description"]
-                res = query_locate(query=query_text, video_id=video_id, top_k=5)
+                res = query_locate(query=query_text, video_id=video_id, top_k=5, description=step["description"])
                 url = res.get("annotated_image_url", "")
                 if url:
                     filename = os.path.basename(url)
