@@ -5,7 +5,6 @@ import logging
 import os
 from typing import Optional
 
-import certifi
 from bson import ObjectId
 from PIL import Image
 from pymongo import MongoClient
@@ -18,7 +17,7 @@ class MongoFrameStore:
     """Stores and retrieves video frames in MongoDB using GridFS."""
 
     def __init__(self, mongo_uri: str, db_name: str = "pdd_vectordb") -> None:
-        self._client = MongoClient(mongo_uri, tlsCAFile=certifi.where())
+        self._client = MongoClient(mongo_uri)
         self._db = self._client[db_name]
         self._fs = GridFS(self._db)
         # Collection for frame metadata (fast lookups by video_id + filename)
