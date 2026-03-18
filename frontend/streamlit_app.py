@@ -12,16 +12,19 @@ import streamlit as st
 import requests
 import time
 import os
+import dotenv
+
 
 
 # Backend API base URL (configurable via environment variable)
+dotenv.load_dotenv()
 BACKEND_URL = os.getenv("PDD_BACKEND_URL", "http://localhost:8001")
 
 
 def _backend_health():
     """Check backend API health."""
     try:
-        resp = requests.get(f"{BACKEND_URL}/health", timeout=5)
+        resp = requests.get(f"{BACKEND_URL}/health", timeout=120)
         if resp.status_code == 200:
             return resp.json()
     except requests.ConnectionError:

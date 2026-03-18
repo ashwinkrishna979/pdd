@@ -30,5 +30,6 @@ dependencies = [
     "torch>=2.5.0",
     "transformers>=4.47.0",
     "replicate>=1.0.0",
-    "pymongo>=4.7.0"
+    "pymongo>=4.7.0",
+    "dotenv>=0.9.9",
 ]
