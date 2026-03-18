@@ -116,6 +116,8 @@ def main():
                 st.caption(f"Model: `{health.get('gemini_model', 'N/A')}`")
             elif health.get("gemini_configured"):
                 st.warning("⚠ Gemini configured but health-check failed")
+                if health.get("gemini_error"):
+                    st.caption(f"Error: {health['gemini_error']}")
             else:
                 st.error("✗ Gemini API Not Connected")
                 st.caption("Set GEMINI_API_KEY in backend environment.")
